@@ -4,10 +4,22 @@ const logger = require('../utils/logger');
 
 class PythHermesClient {
     constructor() {
+        // Check if Hermes URL is configured
+        if (!config.hermesUrl) {
+            logger.error('❌ HERMES_URL not configured. Please set HERMES_URL in your .env file');
+            this.client = null;
+            this.latestPrices = new Map();
+            this.priceHistory = new Map();
+            this.isStreaming = false;
+            this.isConfigured = false;
+            return;
+        }
+        
         this.client = new HermesClient(config.hermesUrl);
         this.latestPrices = new Map();
         this.priceHistory = new Map();
         this.isStreaming = false;
+        this.isConfigured = true;
     }
 
 
@@ -15,12 +27,23 @@ class PythHermesClient {
      * Start streaming live pricess for free
      */
     async startPriceStream() {
+        if (!this.isConfigured) {
+            logger.error('❌ Cannot start price stream: Pyth client not properly configured');
+            return;
+        }
+        
         if(this.isStreaming) {
             logger.warn('Price stream already running');
             return;
         }
         this.isStreaming = true;
-        const priceIds = Object.values(config.priceIds);
+        const priceIds = Object.values(config.priceIds).filter(id => id); // Filter out undefined IDs
+
+        if (priceIds.length === 0) {
+            logger.error('❌ No valid price IDs configured. Please set BTC_PRICE_ID, ETH_PRICE_ID, SOL_PRICE_ID in your .env file');
+            this.isStreaming = false;
+            return;
+        }
 
         logger.info(` LIVE: Starting Pyth price stream for ${priceIds.length} feeds (FREE!)`);
         
@@ -47,7 +70,7 @@ class PythHermesClient {
             this.isStreaming = false;
             
             // Retry after 5 seconds
-            setTimeout(() => this.startPriceStream(), 5000);
+            setTimeout(() => this.startPriceStream(), 100);
         }
     }
     
@@ -71,7 +94,7 @@ class PythHermesClient {
             } catch (error) {
                 logger.error(`Error in polling: ${error.message}`);
             }
-        }, 5000); // Poll every 5 seconds
+        }, 100); // Poll every 100ms seconds
     }
     
     /**

@@ -20,7 +20,7 @@ module.exports = {
     priceIds: {
         'BTC/USD': process.env.BTC_PRICE_ID,
         'ETH/USD': process.env.ETH_PRICE_ID,
-        'SOL/USD': process.env.SOL_PRICE_ID
+    // 'USDC/USD': process.env.USDC_PRICE_ID // To match the .env file
     },
     
     // Bot Detection
