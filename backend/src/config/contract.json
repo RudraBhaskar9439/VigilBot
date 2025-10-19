@@ -1,0 +1,21 @@
+{
+  "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  "abi": [
+    "constructor(address)",
+    "event BotFlagged(address indexed,uint256,string)",
+    "event TradeExecuted(address indexed,uint256,uint256,uint256)",
+    "function admin() view returns (address)",
+    "function botAnalyzer() view returns (address)",
+    "function botScore(address) view returns (uint256)",
+    "function executeTrade(uint256)",
+    "function flagBots(address[],uint256[],string[])",
+    "function flaggedAsBots(address) view returns (bool)",
+    "function getUserTrades(address) view returns ((address,uint256,uint256,uint256)[])",
+    "function isBot(address) view returns (bool,uint256)",
+    "function setBotAnalyzer(address)",
+    "function unflagBot(address)",
+    "function userTrades(address,uint256) view returns (address,uint256,uint256,uint256)"
+  ],
+  "network": "localhost",
+  "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+}

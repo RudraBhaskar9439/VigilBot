@@ -25,7 +25,7 @@ async function main() {
         deployer: deployer.address
     };
     
-    const backendConfigPath = path.join(__dirname, '../../backend/src/config/contract.json');
+    const backendConfigPath = path.join(__dirname, '../backend/src/config/contract.json');
     fs.mkdirSync(path.dirname(backendConfigPath), { recursive: true });
     fs.writeFileSync(backendConfigPath, JSON.stringify(contractData, null, 2));
     
