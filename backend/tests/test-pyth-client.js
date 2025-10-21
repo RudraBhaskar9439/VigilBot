@@ -1,5 +1,5 @@
-const PythHermesClient = require('../src/services/pythHermesClient');
-const config = require('../src/config/config');
+import PythHermesClient from '../src/services/pythHermesClient.js';
+import config from '../src/config/config.js';
 
 console.log('🧪 Testing Pyth Hermes Client...\n');
 

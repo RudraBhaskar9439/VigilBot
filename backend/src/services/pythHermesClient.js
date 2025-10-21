@@ -1,6 +1,6 @@
-const { HermesClient } = require('@pythnetwork/hermes-client');
-const config = require('../config/config');
-const logger = require('../utils/logger');
+import { HermesClient } from '@pythnetwork/hermes-client';
+import config from '../config/appConfig.js';
+import logger from '../utils/logger.js';
 
 class PythHermesClient {
     constructor() {
@@ -182,4 +182,4 @@ class PythHermesClient {
     }
 }
 
-module.exports = new PythHermesClient();
+export default new PythHermesClient();

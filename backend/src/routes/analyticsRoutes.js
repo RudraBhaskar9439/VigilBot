@@ -1,8 +1,10 @@
-const express = require('express');
+import express from 'express';
+import pythClient from '../services/pythHermesClient.js';
+import botDetector from '../services/botDetector.js';
+import logger from '../utils/logger.js';
+import config from '../config/config.js'; // Moved from inside the route
+
 const router = express.Router();
-const pythClient = require('../services/pythHermesClient');
-const botDetector = require('../services/botDetector');
-const logger = require('../utils/logger');
 
 /**
  * GET /api/analytics/prices
@@ -27,7 +29,8 @@ router.get('/prices/:asset', (req, res) => {
         const { asset } = req.params;
         const assetUpper = asset.toUpperCase();
         
-        const priceId = require('../config/config').priceIds[assetUpper];
+        // Use the imported config object
+        const priceId = config.priceIds[assetUpper];
         
         if (!priceId) {
             return res.status(404).json({ error: 'Asset not found' });
@@ -93,4 +96,4 @@ router.post('/bots/flag-now', async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

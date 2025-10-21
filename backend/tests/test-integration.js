@@ -1,6 +1,6 @@
-const pythClient = require('../src/services/pythHermesClient');
-const blockchainListener = require('../src/services/blockchainListener');
-const botDetector = require('../src/services/botDetector');
+import pythClient from '../src/services/pythHermesClient.js';
+import blockchainListener from '../src/services/blockchainListener.js';
+import botDetector from '../src/services/botDetector.js';
 
 console.log('🧪 Running Integration Test...\n');
 

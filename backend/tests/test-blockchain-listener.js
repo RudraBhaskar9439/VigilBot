@@ -1,4 +1,4 @@
-const blockchainListener = require('../src/services/blockchainListener');
+import blockchainListener from '../src/services/blockchainListener.js';
 
 console.log('🧪 Testing Blockchain Listener...\n');
 

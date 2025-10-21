@@ -1,4 +1,4 @@
-const botDetector = require('../src/services/botDetector');
+import botDetector from '../src/services/botDetector.js';
 
 console.log('🧪 Testing Bot Detector...\n');
 

@@ -1,6 +1,6 @@
-const { ethers } = require('ethers');
-const config = require('../config/config');
-const logger = require('../utils/logger');
+import { ethers } from 'ethers';
+import config from '../config/config.js';
+import logger from '../utils/logger.js';
 
 class BlockchainListener {
     constructor() {
@@ -140,4 +140,4 @@ class BlockchainListener {
     }
 }
 
-module.exports = new BlockchainListener();
+export default new BlockchainListener();

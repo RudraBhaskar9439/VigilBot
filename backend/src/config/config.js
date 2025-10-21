@@ -1,7 +1,7 @@
-require('dotenv').config();
-const contractData = require('./contract.json');
+import 'dotenv/config';
+import contractData from './contract.json' with { type: 'json' };
 
-module.exports = {
+const config = {
     // Server
     port: process.env.PORT || 3000,
     nodeEnv: process.env.NODE_ENV || 'development',
@@ -20,7 +20,6 @@ module.exports = {
     priceIds: {
         'BTC/USD': process.env.BTC_PRICE_ID,
         'ETH/USD': process.env.ETH_PRICE_ID,
-    // 'USDC/USD': process.env.USDC_PRICE_ID // To match the .env file
     },
     
     // Bot Detection
@@ -29,3 +28,5 @@ module.exports = {
     batchSize: parseInt(process.env.BATCH_SIZE || 10),
     checkInterval: parseInt(process.env.CHECK_INTERVAL || 5000)
 };
+
+export default config;

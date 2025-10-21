@@ -1,12 +1,14 @@
-const config = require('../config/config');
-const pythClient = require('./pythHermesClient');
-const blockchainListener = require('./blockchainListener');
-const logger = require('../utils/logger');
+import config from '../config/config.js';
+import pythClient from './pythHermesClient.js';
+import blockchainListener from './blockchainListener.js';
+import contractInteractor from './contractInteractor.js';
+import logger from '../utils/logger.js';
 
 class BotDetector {
     constructor() {
         this.detectedBots = [];
         this.userAnalytics = new Map();
+        this.flagWithProof = true; // Toggle: Use Pyth proof or not
     }
     
     /**
@@ -236,7 +238,7 @@ class BotDetector {
     }
     
     /**
-     * Batch flag bots on-chain (gas optimization)
+     * Batch flag bots (choose method based on setting)
      */
     async batchFlagBots() {
         if (this.detectedBots.length === 0) return;
@@ -247,7 +249,17 @@ class BotDetector {
         const scores = this.detectedBots.map(bot => bot.score);
         const reasons = this.detectedBots.map(bot => bot.signals.slice(0, 3).join('; '));
         
-        const result = await blockchainListener.flagBots(users, scores, reasons);
+        let result;
+        
+        if (this.flagWithProof) {
+            // Use Pyth proof (demonstrates integration - for hackathon!)
+            logger.info('🎯 Using Pyth price proof (hackathon demo mode)');
+            result = await contractInteractor.flagBotsWithPythProof(users, scores, reasons);
+        } else {
+            // Regular flagging (cheaper)
+            logger.info('💰 Using regular flagging (cost-efficient mode)');
+            result = await contractInteractor.flagBots(users, scores, reasons);
+        }
         
         if (result.success) {
             logger.info(`✅ Successfully flagged ${this.detectedBots.length} bots`);
@@ -255,6 +267,14 @@ class BotDetector {
         } else {
             logger.error(`❌ Failed to flag bots: ${result.error}`);
         }
+    }
+    
+    /**
+     * Toggle between Pyth proof mode and regular mode
+     */
+    setProofMode(useProof) {
+        this.flagWithProof = useProof;
+        logger.info(`🔧 Proof mode: ${useProof ? 'ON (Pyth integration)' : 'OFF (cost-efficient)'}`);
     }
     
     /**
@@ -306,4 +326,4 @@ class BotDetector {
     }
 }
 
-module.exports = new BotDetector();
+export default new BotDetector();
