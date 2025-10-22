@@ -1,4 +1,4 @@
-import winston from 'winston';
+const winston = require('winston');
 
 /**
  * wiston is a popular versatile logging library for Node.js
@@ -25,4 +25,4 @@ const logger = winston.createLogger({
     ]
 });
 
-export default logger;
+module.exports = logger;

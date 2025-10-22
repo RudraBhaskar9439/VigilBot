@@ -1,9 +1,8 @@
-import express from 'express';
-import botDetector from '../services/botDetector.js';
-import blockchainListener from '../services/blockchainListener.js';
-import logger from '../utils/logger.js';
-
+const express = require('express');
 const router = express.Router();
+const botDetector = require('../services/botDetector');
+const blockchainListener = require('../services/blockchainListener');
+const logger = require('../utils/logger');
 
 /**
  * GET /api/user/:address/status
@@ -77,4 +76,4 @@ router.get('/:address/analytics', async (req, res) => {
     }
 });
 
-export default router;
+module.exports = router;

@@ -1,23 +1,24 @@
-import { ethers } from 'ethers';
+import { WebSocketProvider, JsonRpcProvider, Wallet, Contract, formatEther, parseEther } from "ethers";
 import axios from 'axios';
 import config from '../config/config.js';
 import logger from '../utils/logger.js';
-import { JsonRpcProvider } from "ethers";
 
 class ContractInteractor {
     constructor() {
-        this.provider = new JsonRpcProvider(config.rpcUrl);
+        this.provider = config.rpcUrl.startsWith('wss://')
+            ? new WebSocketProvider(config.rpcUrl)
+            : new JsonRpcProvider(config.rpcUrl);
         
         if (config.privateKey && config.privateKey !== 'your_private_key_here' && config.privateKey.length >= 64) {
-            this.wallet = new ethers.Wallet(config.privateKey, this.provider);
-            this.contract = new ethers.Contract(
+            this.wallet = new Wallet(config.privateKey, this.provider);
+            this.contract = new Contract(
                 config.contractAddress,
                 config.contractABI,
                 this.wallet
             );
             logger.info('✅ Contract interactor initialized with write access');
         } else {
-            this.contract = new ethers.Contract(
+            this.contract = new Contract(
                 config.contractAddress,
                 config.contractABI,
                 this.provider
@@ -69,7 +70,7 @@ class ContractInteractor {
             const scores = goodBots.map(bot => bot.score);
             const botTypes = goodBots.map(bot => bot.botType || 'Market Maker');
             const liquidityAmounts = goodBots.map(bot => 
-                ethers.parseEther((bot.liquidityProvided || 0).toString())
+                parseEther((bot.liquidityProvided || 0).toString())
             );
             const reasons = goodBots.map(bot => 
                 `GOOD_BOT: ${bot.signals.slice(0, 3).join('; ')}`
@@ -82,7 +83,7 @@ class ContractInteractor {
             logger.info('✅ Got Pyth price update data for good bots');
             
             const updateFee = await this.pythContract.getUpdateFee(priceUpdateData);
-            logger.info(`💰 Pyth update fee: ${ethers.utils.formatEther(updateFee)} ETH`);
+            logger.info(`💰 Pyth update fee: ${formatEther(updateFee)} ETH`);
             
             const tx = await this.contract.flagGoodBotsWithPythProof(
                 users,
@@ -153,7 +154,7 @@ class ContractInteractor {
             logger.info('✅ Got Pyth price update data for bad bots');
             
             const updateFee = await this.contract.pyth.getUpdateFee(priceUpdateData);
-            logger.info(`💰 Pyth update fee: ${ethers.utils.formatEther(updateFee)} ETH`);
+            logger.info(`💰 Pyth update fee: ${formatEther(updateFee)} ETH`);
             
             const tx = await this.contract.flagBadBotsWithPythProof(
                 users,
@@ -269,7 +270,7 @@ class ContractInteractor {
             const scores = goodBots.map(bot => bot.score);
             const botTypes = goodBots.map(bot => bot.botType || 'Market Maker');
             const liquidityAmounts = goodBots.map(bot => 
-                ethers.parseEther((bot.liquidityProvided || 0).toString())
+                parseEther((bot.liquidityProvided || 0).toString())
             );
             
             const tx = await this.contract.flagGoodBots(

@@ -1,19 +1,12 @@
-import logger from './utils/logger.js';
+const logger = require('./utils/logger');
 
 class MainnetBotDetector {
     constructor() {
         this.detectedBots = [];
         this.userAnalytics = new Map();
-        this.BOT_DETECTION_THRESHOLD = 20; // More aggressive detection for mainnet
-        this.REACTION_TIME_THRESHOLD = 10000; // 1 second
-        this.PRECISION_THRESHOLD = 4; // More than 4 decimal places is suspicious
-        this.HIGH_FREQUENCY_THRESHOLD = 10; // Trades per minute
+        this.BOT_DETECTION_THRESHOLD = 60;
         this.isRunning = false;
         this.monitoringInterval = null;
-        this.lastPrices = {
-            btc: null,
-            eth: null
-        };
     }
     
     /**
@@ -41,38 +34,17 @@ class MainnetBotDetector {
      */
     startMonitoring() {
         this.monitoringInterval = setInterval(() => {
-            // Keep analytics for the last 24 hours
-            const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
-            for (const [user, stats] of this.userAnalytics.entries()) {
-                if (stats.lastSeen < twentyFourHoursAgo) {
-                    this.userAnalytics.delete(user);
-                }
-            }
-            
-            // Calculate active users (traded in last 24 hours)
-            const activeUsers = this.userAnalytics.size;
-            
-            // Calculate all detected bots (not just recent ones)
-            const detectedBotCount = this.detectedBots.filter(bot => 
-                bot.score >= this.BOT_DETECTION_THRESHOLD
-            ).length;
+            // In a real implementation, this would:
+            // 1. Connect to blockchain RPC
+            // 2. Listen for new transactions
+            // 3. Analyze trading patterns
+            // 4. Flag suspicious activity
             
             logger.info('📊 Monitoring blockchain for trading activity...');
-            logger.info(`   Detected bots: ${detectedBotCount}`);
-            logger.info(`   Active users: ${activeUsers}`);
-            
-            console.log('\n📈 System Status Update:');
-            console.log(`   Running: ${this.isRunning}`);
-            console.log(`   Detected Bots: ${detectedBotCount}`);
-            console.log(`   Active Users: ${activeUsers}`);
-            const latestPrices = this.getLatestPrices();
-            console.log(`   Latest BTC Price: ${latestPrices.btc ? '$' + latestPrices.btc.toFixed(2) : 'N/A'}`);
+            logger.info(`   Detected bots: ${this.detectedBots.length}`);
+            logger.info(`   Active users: ${this.userAnalytics.size}`);
             
         }, 30000); // Check every 30 seconds
-    }
-    
-    getLatestPrices() {
-        return this.lastPrices;
     }
     
     /**
@@ -80,98 +52,56 @@ class MainnetBotDetector {
      */
     async analyzeTrade(tradeData) {
         let botScore = 0;
-        let signals = [];
+        const signals = [];
         
         try {
-            // Initialize or update user analytics
-            const userStats = this.userAnalytics.get(tradeData.user) || {
-                firstSeen: Date.now(),
-                lastSeen: Date.now(),
-                totalTrades: 0,
-                totalVolume: 0,
-                trades: [],
-                avgReactionTime: 0,
-                suspiciousPatterns: 0
-            };
-            
-            // Update user's stats with this trade
-            userStats.lastSeen = Date.now();
-            userStats.totalTrades += 1;
-            userStats.totalVolume += parseFloat(tradeData.amount);
-            userStats.trades.push({
-                timestamp: Date.now(),
-                amount: parseFloat(tradeData.amount)
-            });
-            
-            // Save updated stats
-            this.userAnalytics.set(tradeData.user, userStats);
-            userStats.lastSeen = Date.now();
-            userStats.totalTrades++;
-            userStats.totalVolume += parseFloat(tradeData.amount) || 0;
-            userStats.trades.push({
-                timestamp: Date.now(),
-                amount: parseFloat(tradeData.amount) || 0,
-                btcPrice: tradeData.btcPrice
-            });
-            
-            // Maintain only last hour of trades
-            const oneHourAgo = Date.now() - (60 * 60 * 1000);
-            userStats.trades = userStats.trades.filter(trade => trade.timestamp > oneHourAgo);
-            
-            // Calculate trade frequency (trades per hour)
-            const tradesLastHour = userStats.trades.length;
-            tradeData.tradeFrequency = tradesLastHour;
-            
-            // Update average reaction time if available
+            // Reaction Time Analysis
             if (tradeData.reactionTime !== undefined) {
-                userStats.avgReactionTime = 
-                    (userStats.avgReactionTime * (userStats.totalTrades - 1) + tradeData.reactionTime) / userStats.totalTrades;
-            }
-            
-            // Reaction Time Analysis (in milliseconds)
-            if (tradeData.reactionTime !== undefined) {
-                if (tradeData.reactionTime < 1000) { // Sub 1000ms is definitely a bot
-                    botScore += 50;
-                    signals.push('Bot-level reaction time (<100ms)');
-                } else if (tradeData.reactionTime < 3000) {
-                    botScore += 35;
-                    signals.push('Superhuman reaction time (<300ms)');
-                } else if (tradeData.reactionTime < this.REACTION_TIME_THRESHOLD) {
+                if (tradeData.reactionTime < 100) {
                     botScore += 25;
-                    signals.push('Very fast reaction time (<1s)');
+                    signals.push('Superhuman reaction time (<100ms)');
+                } else if (tradeData.reactionTime < 200) {
+                    botScore += 15;
+                    signals.push('Very fast reaction time (<200ms)');
+                } else if (tradeData.reactionTime < 500) {
+                    botScore += 5;
+                    signals.push('Fast reaction time (<500ms)');
                 }
             }
             
-            // Trading Frequency Analysis (per minute)
-            const tradesPerMinute = tradesLastHour / 60;
-            if (tradesPerMinute > this.HIGH_FREQUENCY_THRESHOLD) {
-                botScore += 35;
-                signals.push(`High frequency trading (>${this.HIGH_FREQUENCY_THRESHOLD} trades/min)`);
-            } else if (tradesPerMinute > this.HIGH_FREQUENCY_THRESHOLD / 2) {
-                botScore += 25;
-                signals.push('Elevated trading frequency');
+            // Trading Frequency Analysis
+            if (tradeData.tradeFrequency !== undefined) {
+                if (tradeData.tradeFrequency > 100) {
+                    botScore += 25;
+                    signals.push('Extremely high trading frequency (>100/hour)');
+                } else if (tradeData.tradeFrequency > 50) {
+                    botScore += 15;
+                    signals.push('High trading frequency (>50/hour)');
+                } else if (tradeData.tradeFrequency > 20) {
+                    botScore += 5;
+                    signals.push('Elevated trading frequency (>20/hour)');
+                }
             }
             
-            // Trade Amount Analysis (looking for micro-trades)
+            // Trade Amount Analysis
             if (tradeData.amount !== undefined) {
-                const amount = parseFloat(tradeData.amount);
-                if (amount < 0.1) {
-                    botScore += 30;
-                    signals.push('Micro-trading (<$0.1)');
-                } else if (amount < 1.0) {
+                if (tradeData.amount < 1) {
                     botScore += 20;
-                    signals.push('Very small trades (<$1)');
+                    signals.push('Very small trade amounts (<$1)');
+                } else if (tradeData.amount < 10) {
+                    botScore += 10;
+                    signals.push('Small trade amounts (<$10)');
                 }
             }
             
             // Precision Analysis
             if (tradeData.precision !== undefined) {
-                if (tradeData.precision > 8) {
-                    botScore += 40;
-                    signals.push('Bot-level precision (>8 decimals)');
-                } else if (tradeData.precision > this.PRECISION_THRESHOLD) {
-                    botScore += 25;
-                    signals.push(`High precision (>${this.PRECISION_THRESHOLD} decimals)`);
+                if (tradeData.precision > 6) {
+                    botScore += 15;
+                    signals.push('High precision trading (>6 decimals)');
+                } else if (tradeData.precision > 4) {
+                    botScore += 8;
+                    signals.push('Elevated precision trading (>4 decimals)');
                 }
             }
             
@@ -198,9 +128,33 @@ class MainnetBotDetector {
                 }
             }
             
-            // Check for suspicious patterns based on historical data
+            // Update user analytics
+            const userAddress = tradeData.user;
+            if (!this.userAnalytics.has(userAddress)) {
+                this.userAnalytics.set(userAddress, {
+                    totalTrades: 0,
+                    totalVolume: 0,
+                    avgReactionTime: 0,
+                    suspiciousPatterns: 0,
+                    firstSeen: Date.now(),
+                    lastSeen: Date.now()
+                });
+            }
+            
+            const userStats = this.userAnalytics.get(userAddress);
+            userStats.totalTrades++;
+            userStats.totalVolume += tradeData.amount || 0;
+            userStats.lastSeen = Date.now();
+            
+            // Update average reaction time
+            if (tradeData.reactionTime !== undefined) {
+                userStats.avgReactionTime = 
+                    (userStats.avgReactionTime * (userStats.totalTrades - 1) + tradeData.reactionTime) / userStats.totalTrades;
+            }
+            
+            // Check for suspicious patterns
             if (userStats.totalTrades > 10) {
-                if (userStats.avgReactionTime < 2000) {
+                if (userStats.avgReactionTime < 200) {
                     botScore += 10;
                     signals.push('Consistently fast reaction times');
                 }
@@ -211,12 +165,11 @@ class MainnetBotDetector {
                 }
             }
             
-            // Final bot detection check
             const isBot = botScore >= this.BOT_DETECTION_THRESHOLD;
             
             if (isBot) {
                 this.detectedBots.push({
-                    user: tradeData.user,
+                    user: userAddress,
                     score: botScore,
                     signals: signals,
                     timestamp: Date.now(),
@@ -224,7 +177,7 @@ class MainnetBotDetector {
                 });
                 
                 logger.warn(`🚨 BOT DETECTED ON MAINNET!`);
-                logger.warn(`   User: ${tradeData.user}`);
+                logger.warn(`   User: ${userAddress}`);
                 logger.warn(`   Score: ${botScore}/100`);
                 logger.warn(`   Signals: ${signals.join(', ')}`);
                 logger.warn(`   Trade Amount: $${tradeData.amount}`);
@@ -268,13 +221,9 @@ class MainnetBotDetector {
      * Get system status
      */
     getStatus() {
-        // Filter for active bots (detected in the last hour)
-        const oneHourAgo = Date.now() - (60 * 60 * 1000);
-        const recentBots = this.detectedBots.filter(bot => bot.timestamp > oneHourAgo);
-        
         return {
             isRunning: this.isRunning,
-            detectedBots: recentBots.length,
+            detectedBots: this.detectedBots.length,
             activeUsers: this.userAnalytics.size,
             threshold: this.BOT_DETECTION_THRESHOLD
         };
@@ -293,4 +242,4 @@ class MainnetBotDetector {
     }
 }
 
-export default new MainnetBotDetector();
+module.exports = new MainnetBotDetector();

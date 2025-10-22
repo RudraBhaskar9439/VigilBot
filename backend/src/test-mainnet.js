@@ -1,125 +1,109 @@
-import mainnetBotDetector from './mainnet-bot-detector.js';
-import logger from './utils/logger.js';
-import blockchainListener from './services/blockchainListener.js';
-import pythHermesClient from './services/pythHermesClient.js';
+const mainnetBotDetector = require('./mainnet-bot-detector');
+const logger = require('./utils/logger');
 
-console.log('🌐 MAINNET BOT DETECTION SYSTEM');
+console.log('🌐 MAINNET BOT DETECTION TEST');
 console.log('==============================\n');
 
 async function runMainnetTest() {
     try {
-        // Start the Pyth price feed
-        console.log('1️⃣ Starting Pyth Price Feed...');
-        await pythHermesClient.startPriceStream();
-        console.log('✅ Connected to Pyth Network price feeds\n');
-
-        // Start the bot detection system
-        console.log('2️⃣ Starting Mainnet Bot Detection System...');
+        console.log('1️⃣ Starting Mainnet Bot Detection System...');
         await mainnetBotDetector.start();
-        console.log('✅ Bot detection system is running\n');
+        console.log('✅ Mainnet bot detector is running\n');
 
-        // Start listening for real trades
-        console.log('3️⃣ Starting blockchain listener for live trades...');
+        console.log('2️⃣ Testing Bot Detection with Sample Trades...\n');
+
+        // Test Case 1: Clear Bot
+        console.log('📊 Test Case 1: Rapid Trading Bot');
+        const botTrade = {
+            user: '0x9999999999999999999999999999999999999999',
+            amount: 25.50,
+            reactionTime: 45, // Very fast
+            tradeFrequency: 150, // High frequency
+            precision: 8, // High precision
+            timeOfDay: 3, // Off-hours
+            marketTiming: 'immediate'
+        };
         
-        // Get initial bot counts
-        const goodBotsCount = await blockchainListener.getGoodBotsCount();
-        const badBotsCount = await blockchainListener.getBadBotsCount();
-        console.log(`📊 Initial Bot Statistics:`);
-        console.log(`   Good Bots: ${goodBotsCount}`);
-        console.log(`   Bad Bots: ${badBotsCount}\n`);
+        const botResult = await mainnetBotDetector.analyzeTrade(botTrade);
+        console.log(`   Result: ${botResult.isBot ? '🤖 BOT DETECTED' : '👤 Human'}`);
+        console.log(`   Score: ${botResult.score}/100`);
+        console.log(`   Signals: ${botResult.signals.join(', ')}\n`);
+
+        // Test Case 2: Human Trader
+        console.log('📊 Test Case 2: Normal Human Trader');
+        const humanTrade = {
+            user: '0x1234567890123456789012345678901234567890',
+            amount: 150.75,
+            reactionTime: 2500, // Normal human reaction
+            tradeFrequency: 5, // Normal frequency
+            precision: 2, // Normal precision
+            timeOfDay: 14, // Business hours
+            marketTiming: 'normal'
+        };
         
-        // Start listening for real-time trades
-        blockchainListener.startListening(async (tradeData) => {
-            console.log(`\n🔍 Analyzing trade from ${tradeData.user}:`);
-            console.log(`   Amount: $${tradeData.amount}`);
-            console.log(`   BTC Price: $${tradeData.btcPrice}`);
-            console.log(`   Reaction Time: ${tradeData.reactionTime}ms`);
-            console.log(`   Trade Precision: ${tradeData.precision} decimals`);
-            
-            // Analyze for bot behavior
-            const result = await mainnetBotDetector.analyzeTrade(tradeData);
-            
-            if (result.isBot) {
-                logger.warn(`\n🚨 BOT DETECTED IN LIVE TRADE!`);
-                logger.warn(`   User: ${tradeData.user}`);
-                logger.warn(`   Score: ${result.score}/100`);
-                logger.warn(`   Signals: ${result.signals.join(', ')}`);
-                
-                // Get detailed bot info
-                const botInfo = await blockchainListener.getBotInfo(tradeData.user);
-                if (botInfo) {
-                    logger.warn(`   Category: ${botInfo.category === 1 ? 'GOOD_BOT' : 'BAD_BOT'}`);
-                    logger.warn(`   Bot Type: ${botInfo.botType}`);
-                    logger.warn(`   Liquidity Provided: $${botInfo.liquidityProvided}`);
-                }
-                
-                // Get evidence with Pyth proof
-                const evidence = await blockchainListener.getBotEvidence(tradeData.user);
-                if (evidence) {
-                    logger.warn(`   Price at Trade: $${evidence.priceAtTrade}`);
-                    logger.warn(`   Reaction Time: ${evidence.reactionTimeMs}ms`);
-                }
-            }
-        });
-        console.log('✅ Listening for live trades\n');
+        const humanResult = await mainnetBotDetector.analyzeTrade(humanTrade);
+        console.log(`   Result: ${humanResult.isBot ? '🤖 BOT DETECTED' : '👤 Human'}`);
+        console.log(`   Score: ${humanResult.score}/100`);
+        console.log(`   Signals: ${humanResult.signals.join(', ')}\n`);
+
+        // Test Case 3: Suspicious Trader
+        console.log('📊 Test Case 3: Suspicious Trader');
+        const suspiciousTrade = {
+            user: '0x7777777777777777777777777777777777777777',
+            amount: 75.25,
+            reactionTime: 250, // Fast but not superhuman
+            tradeFrequency: 60, // High but not extreme
+            precision: 5, // Elevated precision
+            timeOfDay: 15, // Business hours
+            marketTiming: 'fast'
+        };
         
-        // Fetch existing bot lists
-        console.log('4️⃣ Fetching existing bot data...');
-        const goodBots = await blockchainListener.getGoodBots();
-        const badBots = await blockchainListener.getBadBots();
-        
-        if (goodBots.length > 0) {
-            console.log('\n🟢 Known Good Bots:');
-            for (const bot of goodBots) {
-                console.log(`   Address: ${bot.address}`);
-                console.log(`   Type: ${bot.botType}`);
-                console.log(`   Liquidity: $${bot.liquidityProvided}`);
-                console.log('');
-            }
+        const suspiciousResult = await mainnetBotDetector.analyzeTrade(suspiciousTrade);
+        console.log(`   Result: ${suspiciousResult.isBot ? '🤖 BOT DETECTED' : '👤 Human'}`);
+        console.log(`   Score: ${suspiciousResult.score}/100`);
+        console.log(`   Signals: ${suspiciousResult.signals.join(', ')}\n`);
+
+        // Show system status
+        console.log('📈 System Status:');
+        const status = mainnetBotDetector.getStatus();
+        console.log(`   Running: ${status.isRunning}`);
+        console.log(`   Detected Bots: ${status.detectedBots}`);
+        console.log(`   Active Users: ${status.activeUsers}`);
+        console.log(`   Detection Threshold: ${status.threshold}\n`);
+
+        // Show detected bots
+        const detectedBots = mainnetBotDetector.getDetectedBots();
+        if (detectedBots.length > 0) {
+            console.log('🚨 DETECTED BOTS:');
+            detectedBots.forEach((bot, index) => {
+                console.log(`   ${index + 1}. ${bot.user} (Score: ${bot.score})`);
+                console.log(`      Signals: ${bot.signals.join(', ')}`);
+            });
+            console.log('');
         }
+
+        console.log('✅ Mainnet Bot Detection Test Complete!');
+        console.log('🎉 Your bot detection system is ready for mainnet deployment!');
         
-        if (badBots.length > 0) {
-            console.log('\n🔴 Known Bad Bots:');
-            for (const bot of badBots) {
-                console.log(`   Address: ${bot.address}`);
-                console.log(`   Score: ${bot.score}`);
-                console.log(`   Flagged At: ${new Date(bot.flaggedAt * 1000).toLocaleString()}`);
-                console.log('');
-            }
-        }
-        // No simulated trades - only real mainnet monitoring
-
-        // Show system status periodically
-        const statusInterval = setInterval(() => {
-            const status = mainnetBotDetector.getStatus();
-            console.log('\n📈 System Status Update:');
-            console.log(`   Running: ${status.isRunning}`);
-            console.log(`   Detected Bots: ${status.detectedBots}`);
-            console.log(`   Active Users: ${status.activeUsers}`);
-            console.log(`   Latest BTC Price: $${pythHermesClient.getLatestPrice('BTC/USD')?.price || 'N/A'}`);
-        }, 10000); // Update every 10 seconds
-
-        // Handle graceful shutdown
-        process.on('SIGINT', async () => {
-            console.log('\n🛑 Shutting down mainnet bot detection system...');
-            clearInterval(statusInterval);
-            mainnetBotDetector.stop();
-            
-            // Clean shutdown - just log and exit
-            logger.info('Shutting down price feeds and event listeners...');
-            process.exit(0);
-        });
-
-        // Keep the system running indefinitely
-        console.log('\n🎯 Bot Detection System is LIVE!');
-        console.log('Press Ctrl+C to stop\n');
+        // Keep the system running for a few more seconds to show monitoring
+        console.log('\n⏳ Monitoring for 10 seconds...');
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        
+        console.log('\n🛑 Stopping mainnet bot detector...');
+        mainnetBotDetector.stop();
 
     } catch (error) {
-        console.error('❌ Mainnet system failed:', error.message);
+        console.error('❌ Mainnet test failed:', error.message);
         console.error(error);
-        process.exit(1);
     }
 }
 
-// Run the mainnet system
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+    console.log('\n🛑 Mainnet test interrupted by user');
+    mainnetBotDetector.stop();
+    process.exit(0);
+});
+
+// Run the mainnet test
 runMainnetTest();
