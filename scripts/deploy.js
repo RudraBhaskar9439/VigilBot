@@ -1,4 +1,5 @@
-import { ethers, network } from "hardhat";
+import pkg from 'hardhat';
+const { ethers, network } = pkg;
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -24,15 +25,16 @@ async function main() {
         deployer.address        // Bot analyzer address
     );
     
-    // The deploy() function already waits for deployment to complete in recent versions.
-    const contractAddress = await botDetector.getAddress();
+    // Wait for deployment to complete
+    await botDetector.deployed();
+    const contractAddress = botDetector.address;
     
     console.log("✅ BotDetectorWithPyth deployed to:", contractAddress);
     
     // Save contract data
     const contractData = {
         address: contractAddress,
-        abi: JSON.parse(botDetector.interface.formatJson()),
+        abi: botDetector.interface.format(),
         network: network.name, // Use the imported 'network' object
         deployer: deployer.address,
         pythContract: PYTH_CONTRACT_SEPOLIA
