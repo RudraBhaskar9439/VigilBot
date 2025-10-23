@@ -1,8 +1,10 @@
-const express = require('express');
+import express from 'express';
+import botDetector from '../services/botDetector.js';
+import blockchainListener from '../services/blockchainListener.js';
+import mainnetBotDetector from '../mainnet-bot-detector.js';
+import logger from '../utils/logger.js';
+
 const router = express.Router();
-const botDetector = require('../services/botDetector');
-const blockchainListener = require('../services/blockchainListener');
-const logger = require('../utils/logger');
 
 /**
  * GET /api/user/:address/status
@@ -16,6 +18,27 @@ router.get('/:address/status', async (req, res) => {
             return res.status(400).json({ error: 'Invalid address' });
         }
         
+        // First check mainnetBotDetector for scan results
+        const userAnalytics = mainnetBotDetector.getUserAnalytics(address);
+        
+        if (userAnalytics) {
+            // User was scanned, return their data
+            const botScore = userAnalytics.botScore || 0;
+            let category = 'HUMAN';
+            if (botScore >= 80) category = 'BAD_BOT';
+            else if (botScore >= 40) category = 'SUSPICIOUS';
+            else if (botScore >= 20) category = 'GOOD_BOT';
+            
+            return res.json({
+                address,
+                isFlagged: botScore >= 20,
+                botScore: botScore,
+                category: category,
+                status: botScore >= 20 ? 'BOT' : 'HUMAN'
+            });
+        }
+        
+        // Fallback to blockchain listener
         const botStatus = await blockchainListener.isBot(address);
         
         res.json({
@@ -76,4 +99,4 @@ router.get('/:address/analytics', async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

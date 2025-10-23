@@ -22,35 +22,102 @@ interface Analytics {
   avgInterval: number;
 }
 
+interface ScanUserData {
+  userId: number;
+  address: string;
+  actualCategory: string;
+  detectedCategory: string;
+  botScore: number;
+  reactionTime: number | null;
+  signals: string[];
+  profile: {
+    totalTrades: number;
+    avgAmount: number;
+    tradingFrequency: number;
+    liquidityProvided?: number;
+  };
+  tradeDetails: {
+    amount: string;
+    timestamp: number;
+  };
+}
+
 export default function UserAnalytics() {
   const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<UserStatus | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [scanData, setScanData] = useState<ScanUserData | null>(null);
   const [activeTab, setActiveTab] = useState<'status' | 'trades' | 'analytics'>('status');
+
+  // Function to get scan data from localStorage
+  const getScanDataForUser = (userAddress: string): ScanUserData | null => {
+    try {
+      const stored = localStorage.getItem('botScanResults');
+      if (stored) {
+        const scanResults = JSON.parse(stored);
+        const user = scanResults.users?.find(
+          (u: ScanUserData) => u.address.toLowerCase() === userAddress.toLowerCase()
+        );
+        return user || null;
+      }
+    } catch (error) {
+      console.error('Error reading scan data:', error);
+    }
+    return null;
+  };
 
   const handleCheckStatus = async () => {
     if (!address) return;
 
     setLoading(true);
     try {
-      const { data: bot, error } = await supabase
-        .from('bots')
-        .select('*')
-        .eq('address', address.toLowerCase())
-        .maybeSingle();
+      // Check localStorage for scan data first
+      const localScanData = getScanDataForUser(address);
+      if (localScanData) {
+        setScanData(localScanData);
+        setStatus({
+          isFlagged: localScanData.botScore >= 20,
+          botScore: localScanData.botScore,
+          category: localScanData.detectedCategory,
+        });
+        setLoading(false);
+        return;
+      }
 
-      if (error) throw error;
+      // Try backend API (for scanned users)
+      const response = await fetch(`http://localhost:3000/api/user/${address}/status`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setStatus({
+          isFlagged: data.isFlagged || false,
+          botScore: data.botScore || 0,
+          category: data.category || data.status,
+        });
+        setScanData(null);
+      } else {
+        // Fallback to Supabase
+        const { data: bot, error } = await supabase
+          .from('bots')
+          .select('*')
+          .eq('address', address.toLowerCase())
+          .maybeSingle();
 
-      setStatus({
-        isFlagged: bot?.is_flagged || false,
-        botScore: bot?.score || 0,
-        category: bot?.category,
-      });
+        if (error) throw error;
+
+        setStatus({
+          isFlagged: bot?.is_flagged || false,
+          botScore: bot?.score || 0,
+          category: bot?.category,
+        });
+        setScanData(null);
+      }
     } catch (error) {
       console.error('Error checking status:', error);
       setStatus({ isFlagged: false, botScore: 0 });
+      setScanData(null);
     } finally {
       setLoading(false);
     }
@@ -196,6 +263,12 @@ export default function UserAnalytics() {
         <>
           {activeTab === 'status' && status && (
             <div className="space-y-4">
+              {scanData && (
+                <div className="mb-4 p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg text-sm text-cyan-400">
+                  💾 Detailed scan data available from previous scan
+                </div>
+              )}
+              
               <div className="flex items-center gap-4 p-4 bg-slate-800 rounded-lg">
                 <AlertCircle
                   className={`w-6 h-6 ${status.isFlagged ? 'text-red-400' : 'text-green-400'}`}
@@ -224,6 +297,66 @@ export default function UserAnalytics() {
                     </p>
                   </div>
                 </div>
+              )}
+
+              {/* Detailed Scan Data */}
+              {scanData && (
+                <>
+                  <div className="border-t border-slate-700 pt-4 mt-4">
+                    <h4 className="text-lg font-bold text-white mb-3">Scan Details</h4>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-slate-800 rounded-lg">
+                      <p className="text-slate-400 text-sm mb-1">Actual Category</p>
+                      <p className="text-white font-semibold">{scanData.actualCategory.replace('_', ' ')}</p>
+                    </div>
+                    <div className="p-4 bg-slate-800 rounded-lg">
+                      <p className="text-slate-400 text-sm mb-1">Detected Category</p>
+                      <p className="text-white font-semibold">{scanData.detectedCategory.replace('_', ' ')}</p>
+                    </div>
+                    <div className="p-4 bg-slate-800 rounded-lg">
+                      <p className="text-slate-400 text-sm mb-1">Total Trades</p>
+                      <p className="text-white font-semibold">{scanData.profile.totalTrades}</p>
+                    </div>
+                    <div className="p-4 bg-slate-800 rounded-lg">
+                      <p className="text-slate-400 text-sm mb-1">Avg Amount</p>
+                      <p className="text-white font-semibold">{scanData.profile.avgAmount.toFixed(4)} ETH</p>
+                    </div>
+                    <div className="p-4 bg-slate-800 rounded-lg">
+                      <p className="text-slate-400 text-sm mb-1">Trading Frequency</p>
+                      <p className="text-white font-semibold">{scanData.profile.tradingFrequency} trades/hr</p>
+                    </div>
+                    {scanData.reactionTime !== null && (
+                      <div className="p-4 bg-slate-800 rounded-lg">
+                        <p className="text-slate-400 text-sm mb-1">Reaction Time</p>
+                        <p className="text-white font-semibold">{scanData.reactionTime.toFixed(0)}ms</p>
+                      </div>
+                    )}
+                    {scanData.profile.liquidityProvided && scanData.profile.liquidityProvided > 0 && (
+                      <div className="p-4 bg-slate-800 rounded-lg">
+                        <p className="text-slate-400 text-sm mb-1">Liquidity Provided</p>
+                        <p className="text-white font-semibold">${scanData.profile.liquidityProvided.toFixed(2)}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {scanData.signals.length > 0 && (
+                    <div className="p-4 bg-slate-800 rounded-lg">
+                      <p className="text-slate-400 text-sm mb-2">Detection Signals</p>
+                      <div className="flex flex-wrap gap-2">
+                        {scanData.signals.map((signal, idx) => (
+                          <span
+                            key={idx}
+                            className="text-xs px-3 py-1 bg-slate-700 rounded-full text-slate-300"
+                          >
+                            {signal}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
