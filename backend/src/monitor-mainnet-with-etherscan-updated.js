@@ -6,7 +6,7 @@ import appConfig from './config/appConfig.js';
 import pythHermesClient from './services/pythHermesClient.js';
 
 // Initialize provider globally
-const provider = new ethers.providers.JsonRpcProvider(config.rpcUrl, config.network);
+const provider = new ethers.JsonRpcProvider(config.rpcUrl, config.network);
 
 async function monitorMainnetWithEtherscan() {
     try {
@@ -122,12 +122,17 @@ async function monitorMainnetWithEtherscan() {
 
 async function processBlock(blockNumber) {
     try {
-        const block = await provider.getBlock(blockNumber, true);
+        logger.info(`Attempting to fetch block ${blockNumber}...`);
+        const block = await provider.getBlock(blockNumber);
         
         if (!block) {
             logger.error(`Could not fetch block ${blockNumber}`);
             return;
         }
+        
+        logger.info(`Successfully fetched block ${blockNumber}`);
+        logger.info(`Block hash: ${block.hash}`);
+        logger.info(`Parent hash: ${block.parentHash}`);
         
         logger.info(`\n${'★'.repeat(40)}`);
         logger.info(`Processing Block #${blockNumber}`);
@@ -139,10 +144,14 @@ async function processBlock(blockNumber) {
             const txHash = block.transactions[i];
             try {
                 const tx = await provider.getTransaction(txHash);
-                const receipt = await provider.getTransactionReceipt(tx.hash);
+                if (!tx) {
+                    logger.info(`No transaction found for hash ${txHash}`);
+                    continue;
+                }
                 
+                const receipt = await provider.getTransactionReceipt(txHash);
                 if (!receipt) {
-                    logger.info(`No receipt found for transaction ${tx.hash}`);
+                    logger.info(`No receipt found for transaction ${txHash}`);
                     continue;
                 }
 
@@ -151,9 +160,17 @@ async function processBlock(blockNumber) {
                 const btcPrice = pythHermesClient.getLatestPrice(appConfig.priceIds['BTC/USD']);
                 const ethPrice = pythHermesClient.getLatestPrice(appConfig.priceIds['ETH/USD']);
 
-                // Get the latest price publish time (in milliseconds)
-                const btcPublishTime = btcPrice?.publishTime ? btcPrice.publishTime * 1000 : 0;
-                const ethPublishTime = ethPrice?.publishTime ? ethPrice.publishTime * 1000 : 0;
+                // Debug price data
+                if (btcPrice) {
+                    logger.debug(`BTC Price: $${btcPrice.price?.toFixed(2)}, Published: ${new Date(btcPrice.publishTime).toISOString()}`);
+                }
+                if (ethPrice) {
+                    logger.debug(`ETH Price: $${ethPrice.price?.toFixed(2)}, Published: ${new Date(ethPrice.publishTime).toISOString()}`);
+                }
+
+                // Get the latest price publish time (already in milliseconds from PythHermesClient)
+                const btcPublishTime = btcPrice?.publishTime || 0;
+                const ethPublishTime = ethPrice?.publishTime || 0;
                 const pricePublishTime = Math.max(btcPublishTime, ethPublishTime);
                 
                 // Only calculate reaction time if we have valid price data
@@ -164,7 +181,7 @@ async function processBlock(blockNumber) {
                 // Prepare trade data for bot analysis
                 const tradeData = {
                     user: tx.from,
-                    amount: parseFloat(ethers.utils.formatEther(tx.value)),
+                    amount: parseFloat(ethers.formatEther(tx.value || '0')),
                     btcPrice: btcPrice?.price || 0,
                     ethPrice: ethPrice?.price || 0,
                     blockNumber: blockNumber,
@@ -192,15 +209,15 @@ async function processBlock(blockNumber) {
                 logger.info(`Hash: ${tx.hash}`);
                 logger.info(`From: ${tx.from}`);
                 logger.info(`To: ${tx.to || 'Contract Creation'}`);
-                logger.info(`Value: ${ethers.utils.formatEther(tx.value || '0')} ETH`);
+                logger.info(`Value: ${ethers.formatEther(tx.value || '0')} ETH`);
                 logger.info(`Nonce: ${tx.nonce}`);
                 
                 // Gas Information
                 logger.info('\n⛽ Gas Information:');
                 logger.info(`Gas Limit: ${tx.gasLimit.toString()}`);
-                logger.info(`Gas Used: ${receipt.gasUsed.toString()} (${(receipt.gasUsed.mul(100).div(tx.gasLimit)).toString()}%)`);
-                logger.info(`Gas Price: ${ethers.utils.formatUnits(tx.gasPrice, 'gwei')} Gwei`);
-                logger.info(`Total Gas Cost: ${ethers.utils.formatEther(tx.gasPrice.mul(receipt.gasUsed))} ETH`);
+                logger.info(`Gas Used: ${receipt.gasUsed.toString()} (${Math.round((Number(receipt.gasUsed) * 100) / Number(tx.gasLimit))}%)`);
+                logger.info(`Gas Price: ${ethers.formatUnits(tx.gasPrice || tx.maxFeePerGas || '0', 'gwei')} Gwei`);
+                logger.info(`Total Gas Cost: ${ethers.formatEther(BigInt(receipt.gasUsed) * (tx.gasPrice || tx.maxFeePerGas || 0n))} ETH`);
 
                 // Bot Detection Results
                 logger.info('\n🤖 Bot Detection Results:');

@@ -3,12 +3,23 @@ import mainnetBotDetector from './mainnet-bot-detector.js';
 import logger from './utils/logger.js';
 import pythHermesClient from './services/pythHermesClient.js';
 import appConfig from './config/appConfig.js';
-import { simulationStats } from './routes/simulationRoutes.js';
-
 
 console.log('🎯 BOT DETECTION TEST: 1500 USERS');
 console.log('=' .repeat(80));
 console.log('\n');
+
+// Global state for tracking users
+let globalUsers = new Map();
+let globalStats = {
+    humans: 0,
+    goodBots: 0,
+    suspicious: 0,
+    badBots: 0,
+    total: 0,
+    correctDetections: 0,
+    falsePositives: 0,
+    falseNegatives: 0
+};
 
 // User categories with their characteristics
 const USER_CATEGORIES = {
@@ -241,6 +252,8 @@ async function runTest() {
             const tradeData = generateTradeData(user, currentTime);
             
             // Analyze trade
+            // Add actual category to trade data
+            tradeData.actualCategory = user.category;
             const result = await mainnetBotDetector.analyzeTrade(tradeData);
             
             stats.total++;
@@ -270,27 +283,6 @@ async function runTest() {
             } else if (user.category !== 'HUMAN' && detectedCategory === 'HUMAN') {
                 stats.falseNegatives++;
             }
-            
-            // Update simulationStats for frontend
-            simulationStats.running = true;
-            simulationStats.total = stats.total;
-            simulationStats.humans = stats.humans;
-            simulationStats.goodBots = stats.goodBots;
-            simulationStats.suspicious = stats.suspicious;
-            simulationStats.badBots = stats.badBots;
-            simulationStats.correctDetections = stats.correctDetections;
-            simulationStats.falsePositives = stats.falsePositives;
-            simulationStats.falseNegatives = stats.falseNegatives;
-            simulationStats.accuracy = stats.total ? (stats.correctDetections / stats.total * 100) : 0;
-            simulationStats.progress = ((i + 1) / users.length * 100).toFixed(1);
-            simulationStats.lastUser = {
-                address: user.address,
-                category: user.category,
-                detectedCategory,
-                botScore: result.score,
-                tradeAmount: tradeData.amount
-            };
-            simulationStats.finished = false;
             
             // Display results
             console.log('=' .repeat(80));
@@ -370,14 +362,19 @@ async function runTest() {
         // Final Statistics
         console.log('\n\n');
         console.log('=' .repeat(80));
-        console.log('🎉 TEST COMPLETE - FINAL STATISTICS');
+        console.log('\n\n🎉 TEST COMPLETE - FINAL STATISTICS 🎉');
         console.log('=' .repeat(80));
-        console.log('\n📊 Category Breakdown:');
-        console.log(`   Humans: ${stats.humans}`);
-        console.log(`   Good Bots: ${stats.goodBots}`);
-        console.log(`   Suspicious: ${stats.suspicious}`);
-        console.log(`   Bad Bots: ${stats.badBots}`);
-        console.log(`   Total: ${stats.total}`);
+        console.log('\n📊 SUMMARY OF 1500 USERS TEST:');
+        console.log('=' .repeat(50));
+        console.log('\n👥 Category Breakdown:');
+        console.log(`   🧑 Humans........: ${stats.humans} (${((stats.humans/stats.total)*100).toFixed(1)}%)`);
+        console.log(`   🤖 Good Bots.....: ${stats.goodBots} (${((stats.goodBots/stats.total)*100).toFixed(1)}%)`);
+        console.log(`   ⚠️  Suspicious....: ${stats.suspicious} (${((stats.suspicious/stats.total)*100).toFixed(1)}%)`);
+        console.log(`   ❌ Bad Bots......: ${stats.badBots} (${((stats.badBots/stats.total)*100).toFixed(1)}%)`);
+        console.log(`   📈 Total Users...: ${stats.total}`);
+        console.log('\n💫 OVERALL BOT STATUS:');
+        console.log(`   Total Bots.......: ${stats.goodBots + stats.suspicious + stats.badBots} (${(((stats.goodBots + stats.suspicious + stats.badBots)/stats.total)*100).toFixed(1)}%)`);
+        console.log(`   Human Users......: ${stats.humans} (${((stats.humans/stats.total)*100).toFixed(1)}%)`)
         
         console.log('\n🎯 Detection Accuracy:');
         const accuracy = (stats.correctDetections / stats.total) * 100;
@@ -402,11 +399,11 @@ async function runTest() {
         console.log('=' .repeat(80) + '\n');
         
         // Cleanup
-        simulationStats.finished = true;
-        simulationStats.running = false;
         mainnetBotDetector.stop();
-        pythHermesClient.stop();
+        pythHermesClient.cleanup();
         
+        // Final message
+        console.log('\n✨ Test execution completed successfully! ✨\n');
         process.exit(0);
         
     } catch (error) {
@@ -419,8 +416,90 @@ async function runTest() {
 // Handle graceful shutdown
 process.on('SIGINT', () => {
     console.log('\n\n🛑 Test interrupted by user');
+    
+    const processedUsers = mainnetBotDetector.userAnalytics.size;
+    const detectedBots = mainnetBotDetector.getDetectedBots();
+    
+    // Calculate statistics from processed users
+    const stats = {
+        total: processedUsers,
+        humans: 0,
+        goodBots: 0,
+        suspicious: 0,
+        badBots: 0,
+        correctDetections: 0,
+        falsePositives: 0,
+        falseNegatives: 0
+    };
+    
+    // Analyze each user in the analytics
+    for (const [address, userData] of mainnetBotDetector.userAnalytics.entries()) {
+        const actualCategory = userData.actualCategory; // Use actual category for stats
+        const score = userData.botScore || 0;  // Use the bot score from user data
+        
+        // Update category counts based on actual category
+        if (actualCategory === 'HUMAN') stats.humans++;
+        else if (actualCategory === 'GOOD_BOT') stats.goodBots++;
+        else if (actualCategory === 'SUSPICIOUS') stats.suspicious++;
+        else if (actualCategory === 'BAD_BOT') stats.badBots++;
+        
+        // Check detection accuracy
+        const detectedCategory = score >= 80 ? 'BAD_BOT' :
+                               score >= 40 ? 'SUSPICIOUS' :
+                               score >= 20 ? 'GOOD_BOT' : 'HUMAN';
+                               
+        if (actualCategory === detectedCategory || 
+            (actualCategory === 'GOOD_BOT' && detectedCategory === 'SUSPICIOUS')) {
+            stats.correctDetections++;
+        } else if (actualCategory === 'HUMAN' && detectedCategory !== 'HUMAN') {
+            stats.falsePositives++;
+        } else if (actualCategory !== 'HUMAN' && detectedCategory === 'HUMAN') {
+            stats.falseNegatives++;
+        }
+    }
+    
+    // Display interim results
+    console.log('\n📊 INTERIM ANALYSIS OF PROCESSED USERS');
+    console.log('=' .repeat(80));
+    
+    console.log(`\n💫 Progress: ${processedUsers}/1500 users (${((processedUsers/1500)*100).toFixed(1)}% complete)`);
+    
+    console.log('\n👥 Category Breakdown:');
+    console.log(`   🧑 Humans........: ${stats.humans} (${((stats.humans/stats.total)*100).toFixed(1)}%)`);
+    console.log(`   🤖 Good Bots.....: ${stats.goodBots} (${((stats.goodBots/stats.total)*100).toFixed(1)}%)`);
+    console.log(`   ⚠️  Suspicious....: ${stats.suspicious} (${((stats.suspicious/stats.total)*100).toFixed(1)}%)`);
+    console.log(`   ❌ Bad Bots......: ${stats.badBots} (${((stats.badBots/stats.total)*100).toFixed(1)}%)`);
+    console.log(`   📈 Total Users...: ${stats.total}`);
+    
+    console.log('\n💫 OVERALL BOT STATUS:');
+    const totalBots = stats.goodBots + stats.suspicious + stats.badBots;
+    console.log(`   Total Bots.......: ${totalBots} (${((totalBots/stats.total)*100).toFixed(1)}%)`);
+    console.log(`   Human Users......: ${stats.humans} (${((stats.humans/stats.total)*100).toFixed(1)}%)`);
+    
+    console.log('\n🎯 Detection Stats:');
+    console.log(`   Correct Detections.: ${stats.correctDetections}/${stats.total} (${((stats.correctDetections/stats.total)*100).toFixed(2)}%)`);
+    console.log(`   False Positives....: ${stats.falsePositives} (${(stats.falsePositives/stats.total*100).toFixed(2)}%)`);
+    console.log(`   False Negatives....: ${stats.falseNegatives} (${(stats.falseNegatives/stats.total*100).toFixed(2)}%)`);
+    
+    console.log('\n🚨 Bot Detection Summary:');
+    // Count users in each risk category based on their scores
+    let highRisk = 0, mediumRisk = 0, lowRisk = 0;
+    for (const [_, userData] of mainnetBotDetector.userAnalytics.entries()) {
+        const score = userData.botScore || 0;
+        if (score >= 80) highRisk++;
+        else if (score >= 40) mediumRisk++;
+        else if (score >= 20) lowRisk++;
+    }
+    console.log(`   High Risk (>80)....: ${highRisk}`);
+    console.log(`   Medium Risk (40-79): ${mediumRisk}`);
+    console.log(`   Low Risk (20-39)...: ${lowRisk}`);
+    
+    console.log('\n' + '=' .repeat(80));
+    console.log('🛑 Test terminated at user ' + processedUsers + '/1500');
+    console.log('=' .repeat(80));
+    
     mainnetBotDetector.stop();
-    pythHermesClient.stop();
+    pythHermesClient.cleanup();
     process.exit(0);
 });
 
