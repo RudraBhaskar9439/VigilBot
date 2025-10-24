@@ -1,6 +1,0 @@
-// Execute a trade (amount can be any uint256, e.g., 100)
-const contract = new ethers.Contract(address, abi, signer);
-const signer = await ethers.getSigner(); // Uses your PRIVATE_KEY from .env
-const address = require("./backend/src/config/contract.json").address;
-const abi = require("./backend/src/config/contract.json").abi;
-const { ethers } = require("hardhat");

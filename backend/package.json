@@ -3,10 +3,9 @@
   "version": "1.0.0",
   "description": "Backend for bot detection system",
   "main": "src/index.js",
-  "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon --watch src src/index.js",
+    "dev": "nodemon src/index.js",
     "test": "node tests/test-integration.js",
     "deploy": "node src/simple-deploy.js",
     "production": "NODE_ENV=production node src/simple-deploy.js",
@@ -14,28 +13,22 @@
     "test-bot": "node src/test-bot-detection.js",
     "test-live": "node src/live-bot-test.js",
     "test-standalone": "node src/standalone-bot-test.js",
-    "test-mainnet": "node src/test-mainnet.js",
-    "test-1500": "node src/test-1500-users.js",
-    "diagnostic": "node src/diagnostic-check.js",
-    "check-system": "node src/diagnostic-check.js"
+    "test-mainnet": "node src/test-mainnet.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@pythnetwork/hermes-client": "^2.0.0",
-    "axios": "^1.12.2",
+    "@pythnetwork/hermes-client": "^1.0.0",
+    "axios": "^1.6.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
-    "ethers": "^6.15.0",
-    "express": "^4.21.2",
-    "morgan": "^1.10.1",
-    "node-fetch": "^2.7.0",
-    "winston": "^3.18.3",
-    "ws": "^8.18.3"
+    "dotenv": "^16.3.1",
+    "ethers": "^6.9.0",
+    "express": "^4.18.2",
+    "morgan": "^1.10.0",
+    "winston": "^3.11.0"
   },
   "devDependencies": {
-    "hardhat": "^3.0.7",
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.0.2"
   }
 }

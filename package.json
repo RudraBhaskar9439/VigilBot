@@ -1,3 +1,4 @@
+
 {
   "name": "trading-bot-detection",
   "version": "1.0.0",
@@ -12,19 +13,11 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^2.0.0",
-    "dotenv": "^16.4.5",
-    "hardhat": "^2.26.3"
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.0"
   },
   "dependencies": {
-    "@pythnetwork/hermes-client": "^2.0.0",
-    "@pythnetwork/pyth-sdk-solidity": "^4.2.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
-    "ethers": "^5.7.2",
-    "express": "^5.1.0",
-    "morgan": "^1.10.1",
-    "winston": "^3.18.3"
-  },
-  "type": "module"
+    "dotenv": "^16.3.1",
+    "ethers": "^6.9.0"
+  }
 }

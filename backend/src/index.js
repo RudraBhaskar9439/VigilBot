@@ -1,23 +1,17 @@
-// --- Start of ESM Changes ---
-// All require() statements have been converted to import statements.
-// Note that local file imports now require the .js extension.
-import express from 'express';
-import cors from 'cors';
-import morgan from 'morgan';
-import appConfig from './config/appConfig.js';
-import logger from './utils/logger.js';
+const express = require('express');
+const cors = require('cors');
+const morgan = require('morgan');
+const config = require('./config/config');
+const logger = require('./utils/logger');
 
 // Services
-import pythClient from './services/pythHermesClient.js';
-import blockchainListener from './services/blockchainListener.js';
-import botDetector from './services/botDetector.js';
+const pythClient = require('./services/pythHermesClient');
+const blockchainListener = require('./services/blockchainListener');
+const botDetector = require('./services/botDetector');
 
 // Routes
-import userRoutes from './routes/userRoutes.js';
-import analyticsRoutes from './routes/analyticsRoutes.js';
-import simulationRouter from './routes/simulationRoutes.js';
-import scanRoutes from './routes/scanRoutes.js';
-// --- End of ESM Changes ---
+const userRoutes = require('./routes/userRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
 
 // Initialize Express
 const app = express();
@@ -30,8 +24,6 @@ app.use(morgan('combined'));
 // Routes
 app.use('/api/user', userRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/simulation', simulationRouter);
-app.use('/api/scan', scanRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -113,14 +105,15 @@ async function startServices() {
 }
 
 // Start Express server
-app.listen(appConfig.port, () => {
+app.listen(config.port, () => {
     logger.info(`\n${'='.repeat(60)}`);
     logger.info(`🛡️  BOT DETECTION SYSTEM RUNNING`);
     logger.info(`${'='.repeat(60)}`);
-    logger.info(`Server: http://localhost:${appConfig.port}`);
-    logger.info(`Environment: ${appConfig.nodeEnv}`);
-    logger.info(`Contract: ${appConfig.contractAddress}`);
+    logger.info(`Server: http://localhost:${config.port}`);
+    logger.info(`Environment: ${config.nodeEnv}`);
+    logger.info(`Contract: ${config.contractAddress}`);
     logger.info(`${'='.repeat(60)}\n`);
+    
     // Start all services
     startServices();
 });

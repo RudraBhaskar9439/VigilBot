@@ -108,7 +108,7 @@ export default function PaymentPage() {
         .from('subscriptions')
         .select('*')
         .eq('wallet_address', walletAddress.toLowerCase())
-        .maybeSingle();
+        .single();
 
       if (existingSub) {
         // If already subscribed, go to dashboard
@@ -136,27 +136,19 @@ export default function PaymentPage() {
 
         // Use upsert to avoid duplicate key error and include all NOT NULL columns
         const now = new Date().toISOString();
-        
-        // Generate unique transaction hash to avoid conflicts
-        const uniqueTxHash = txHash || `FREE_${walletAddress}_${Date.now()}`;
-        
-        const { error: insertError } = await supabase.from('subscriptions').upsert(
+        const { error: insertError } = await supabase.from('subscriptions').upsert([
           {
             wallet_address: walletAddress.toLowerCase(),
             tier: tier.id,
             amount_paid: parseFloat(tier.ethPrice),
-            transaction_hash: uniqueTxHash,
+            transaction_hash: txHash || 'FREE',
             start_date: now,
             end_date: endDate.toISOString(),
             is_active: true,
             created_at: now,
             updated_at: now,
-          },
-          { 
-            onConflict: 'wallet_address',
-            ignoreDuplicates: false 
           }
-        );
+        ], { onConflict: 'wallet_address' });
 
         if (insertError) throw insertError;
 

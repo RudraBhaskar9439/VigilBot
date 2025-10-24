@@ -1,26 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Shield, AlertTriangle, Clock } from 'lucide-react';
-
-interface DetectedBot {
-  user: string;
-  address?: string;
-  score: number;
-  signals: string[];
-  category?: string;
-  botType?: string;
-  liquidityProvided?: number;
-  riskLevel?: string;
-  risk_level?: string;
-  detectedAt: number;
-  id?: string;
-}
+import { Bot } from '../lib/supabase';
 
 interface BotTableProps {
   type: 'good' | 'bad';
 }
 
 export default function BotTable({ type }: BotTableProps) {
-  const [bots, setBots] = useState<DetectedBot[]>([]);
+  const [bots, setBots] = useState<Bot[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -129,23 +116,23 @@ export default function BotTable({ type }: BotTableProps) {
               </tr>
             </thead>
             <tbody>
-              {bots.map((bot, index) => (
+              {bots.map((bot) => (
                 <tr
-                  key={bot.id || index}
+                  key={bot.id}
                   className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors"
                 >
                   <td className="px-6 py-4">
                     <code className="text-cyan-400 font-mono text-sm">
-                      {formatAddress(bot.user || bot.address || '0x0000000000000000000000000000000000000000')}
+                      {formatAddress(bot.address)}
                     </code>
                   </td>
                   <td className="px-6 py-4">
                     {type === 'good' ? (
                       <span className="text-slate-300">
-                        {(bot.botType || bot.category || 'Unknown').replace('_', ' ').toUpperCase()}
+                        {bot.category.replace('_', ' ').toUpperCase()}
                       </span>
                     ) : (
-                      getRiskBadge(bot.riskLevel || bot.risk_level || 'unknown')
+                      getRiskBadge(bot.risk_level || 'unknown')
                     )}
                   </td>
                   <td className="px-6 py-4">
@@ -154,14 +141,14 @@ export default function BotTable({ type }: BotTableProps) {
                   {type === 'good' && (
                     <td className="px-6 py-4">
                       <span className="text-green-400 font-semibold">
-                        ${(bot.liquidityProvided || 0).toLocaleString()}
+                        ${bot.liquidity_provided.toLocaleString()}
                       </span>
                     </td>
                   )}
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 text-slate-400 text-sm">
                       <Clock className="w-4 h-4" />
-                      {formatDate(new Date(bot.detectedAt).toISOString())}
+                      {formatDate(bot.detected_at)}
                     </div>
                   </td>
                   <td className="px-6 py-4">

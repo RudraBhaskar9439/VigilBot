@@ -1,61 +1,29 @@
 const logger = require('./utils/logger');
 
-class MainnetBotDetector {
+class StandaloneBotDetector {
     constructor() {
         this.detectedBots = [];
         this.userAnalytics = new Map();
-        this.BOT_DETECTION_THRESHOLD = 60;
-        this.isRunning = false;
-        this.monitoringInterval = null;
+        this.BOT_DETECTION_THRESHOLD = 60; // Threshold for bot detection
     }
     
     /**
-     * Start monitoring for bot activity on mainnet
+     * Initialize the bot detector (standalone version)
      */
-    async start() {
-        if (this.isRunning) {
-            logger.warn('Mainnet bot detector is already running');
-            return;
-        }
-        
-        this.isRunning = true;
-        logger.info('🚀 Starting Mainnet Bot Detection System...');
-        logger.info('✅ Bot detection algorithms ready');
-        logger.info('✅ Monitoring for suspicious trading patterns...');
-        
-        // Start monitoring loop
-        this.startMonitoring();
-        
-        logger.info('🎉 Mainnet Bot Detection System is now active!');
+    async initialize() {
+        logger.info('🤖 Standalone Bot Detector initialized');
+        return true;
     }
     
     /**
-     * Start the monitoring loop
-     */
-    startMonitoring() {
-        this.monitoringInterval = setInterval(() => {
-            // In a real implementation, this would:
-            // 1. Connect to blockchain RPC
-            // 2. Listen for new transactions
-            // 3. Analyze trading patterns
-            // 4. Flag suspicious activity
-            
-            logger.info('📊 Monitoring blockchain for trading activity...');
-            logger.info(`   Detected bots: ${this.detectedBots.length}`);
-            logger.info(`   Active users: ${this.userAnalytics.size}`);
-            
-        }, 30000); // Check every 30 seconds
-    }
-    
-    /**
-     * Analyze a trade (can be called from external sources)
+     * Analyze a trade and calculate bot score
      */
     async analyzeTrade(tradeData) {
         let botScore = 0;
         const signals = [];
         
         try {
-            // Reaction Time Analysis
+            // Check 1: Reaction Time Analysis
             if (tradeData.reactionTime !== undefined) {
                 if (tradeData.reactionTime < 100) {
                     botScore += 25;
@@ -69,7 +37,7 @@ class MainnetBotDetector {
                 }
             }
             
-            // Trading Frequency Analysis
+            // Check 2: Trading Frequency Analysis
             if (tradeData.tradeFrequency !== undefined) {
                 if (tradeData.tradeFrequency > 100) {
                     botScore += 25;
@@ -83,18 +51,7 @@ class MainnetBotDetector {
                 }
             }
             
-            // Trade Amount Analysis
-            if (tradeData.amount !== undefined) {
-                if (tradeData.amount < 1) {
-                    botScore += 20;
-                    signals.push('Very small trade amounts (<$1)');
-                } else if (tradeData.amount < 10) {
-                    botScore += 10;
-                    signals.push('Small trade amounts (<$10)');
-                }
-            }
-            
-            // Precision Analysis
+            // Check 3: Trade Amount Precision
             if (tradeData.precision !== undefined) {
                 if (tradeData.precision > 6) {
                     botScore += 15;
@@ -105,7 +62,18 @@ class MainnetBotDetector {
                 }
             }
             
-            // Time of Day Analysis
+            // Check 4: Trade Amount Analysis
+            if (tradeData.amount !== undefined) {
+                if (tradeData.amount < 1) {
+                    botScore += 20;
+                    signals.push('Very small trade amounts (<$1)');
+                } else if (tradeData.amount < 10) {
+                    botScore += 10;
+                    signals.push('Small trade amounts (<$10)');
+                }
+            }
+            
+            // Check 5: Time of Day Analysis
             if (tradeData.timeOfDay !== undefined) {
                 const hour = tradeData.timeOfDay;
                 if (hour >= 0 && hour <= 6) {
@@ -117,7 +85,7 @@ class MainnetBotDetector {
                 }
             }
             
-            // Market Timing Analysis
+            // Check 6: Market Timing Analysis
             if (tradeData.marketTiming !== undefined) {
                 if (tradeData.marketTiming === 'immediate') {
                     botScore += 15;
@@ -128,23 +96,20 @@ class MainnetBotDetector {
                 }
             }
             
-            // Update user analytics
+            // Check 7: User Analytics (if available)
             const userAddress = tradeData.user;
             if (!this.userAnalytics.has(userAddress)) {
                 this.userAnalytics.set(userAddress, {
                     totalTrades: 0,
                     totalVolume: 0,
                     avgReactionTime: 0,
-                    suspiciousPatterns: 0,
-                    firstSeen: Date.now(),
-                    lastSeen: Date.now()
+                    suspiciousPatterns: 0
                 });
             }
             
             const userStats = this.userAnalytics.get(userAddress);
             userStats.totalTrades++;
             userStats.totalVolume += tradeData.amount || 0;
-            userStats.lastSeen = Date.now();
             
             // Update average reaction time
             if (tradeData.reactionTime !== undefined) {
@@ -152,7 +117,7 @@ class MainnetBotDetector {
                     (userStats.avgReactionTime * (userStats.totalTrades - 1) + tradeData.reactionTime) / userStats.totalTrades;
             }
             
-            // Check for suspicious patterns
+            // Check for suspicious patterns in user history
             if (userStats.totalTrades > 10) {
                 if (userStats.avgReactionTime < 200) {
                     botScore += 10;
@@ -176,35 +141,29 @@ class MainnetBotDetector {
                     tradeData: tradeData
                 });
                 
-                logger.warn(`🚨 BOT DETECTED ON MAINNET!`);
-                logger.warn(`   User: ${userAddress}`);
-                logger.warn(`   Score: ${botScore}/100`);
-                logger.warn(`   Signals: ${signals.join(', ')}`);
-                logger.warn(`   Trade Amount: $${tradeData.amount}`);
+                logger.warn(`🚨 Bot detected: ${userAddress} (Score: ${botScore})`);
             }
             
             return {
                 isBot: isBot,
                 score: botScore,
                 signals: signals,
-                userStats: userStats,
-                timestamp: Date.now()
+                userStats: userStats
             };
             
         } catch (error) {
-            logger.error(`Error analyzing trade on mainnet: ${error.message}`);
+            logger.error(`Error analyzing trade: ${error.message}`);
             return {
                 isBot: false,
                 score: 0,
                 signals: [],
-                error: error.message,
-                timestamp: Date.now()
+                error: error.message
             };
         }
     }
     
     /**
-     * Get detected bots
+     * Get detected bots list
      */
     getDetectedBots() {
         return this.detectedBots;
@@ -218,28 +177,11 @@ class MainnetBotDetector {
     }
     
     /**
-     * Get system status
+     * Clear detected bots list
      */
-    getStatus() {
-        return {
-            isRunning: this.isRunning,
-            detectedBots: this.detectedBots.length,
-            activeUsers: this.userAnalytics.size,
-            threshold: this.BOT_DETECTION_THRESHOLD
-        };
-    }
-    
-    /**
-     * Stop monitoring
-     */
-    stop() {
-        if (this.monitoringInterval) {
-            clearInterval(this.monitoringInterval);
-            this.monitoringInterval = null;
-        }
-        this.isRunning = false;
-        logger.info('🛑 Mainnet Bot Detection System stopped');
+    clearDetectedBots() {
+        this.detectedBots = [];
     }
 }
 
-module.exports = new MainnetBotDetector();
+module.exports = new StandaloneBotDetector();
