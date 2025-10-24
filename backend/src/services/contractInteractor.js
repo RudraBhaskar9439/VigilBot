@@ -1,39 +1,34 @@
-import { WebSocketProvider, JsonRpcProvider, Wallet, Contract, formatEther, parseEther } from "ethers";
+import * as ethers from 'ethers';
 import axios from 'axios';
-import config from '../config/config.js';
+import appConfig from '../config/appConfig.js';
 import logger from '../utils/logger.js';
 
 class ContractInteractor {
     constructor() {
-        this.provider = config.rpcUrl.startsWith('wss://')
-            ? new WebSocketProvider(config.rpcUrl)
-            : new JsonRpcProvider(config.rpcUrl);
+        this.provider = new ethers.JsonRpcProvider(appConfig.rpcUrl);
         
-        if (config.privateKey && config.privateKey !== 'your_private_key_here' && config.privateKey.length >= 64) {
-            this.wallet = new Wallet(config.privateKey, this.provider);
-            this.contract = new Contract(
-                config.contractAddress,
-                config.contractABI,
+        if (appConfig.privateKey && appConfig.privateKey !== 'your_private_key_here' && appConfig.privateKey.length >= 64) {
+            this.wallet = new ethers.Wallet(appConfig.privateKey, this.provider);
+            this.contract = new ethers.Contract(
+                appConfig.contractAddress,
+                appConfig.contractABI,
                 this.wallet
             );
             logger.info('✅ Contract interactor initialized with write access');
         } else {
-            this.contract = new Contract(
-                config.contractAddress,
-                config.contractABI,
+            this.contract = new ethers.Contract(
+                appConfig.contractAddress,
+                appConfig.contractABI,
                 this.provider
             );
             logger.warn('⚠️  Read-only mode - no private key provided');
         }
     }
     
-    /**
-     * Get Pyth price update data for on-chain submission
-     */
     async getPythPriceUpdateData(priceIds) {
         try {
             const idsParam = priceIds.map(id => `ids[]=${id}`).join('&');
-            const url = `${config.hermesUrl}/api/latest_vaas?${idsParam}`;
+            const url = `${appConfig.hermesUrl}/api/latest_vaas?${idsParam}`;
             
             const response = await axios.get(url);
             
@@ -48,10 +43,6 @@ class ContractInteractor {
         }
     }
     
-    /**
-     * Flag GOOD BOTS with Pyth price proof
-     * Good bots are legitimate automated traders (scores 40-59)
-     */
     async flagGoodBotsWithPythProof(goodBots) {
         if (!this.wallet) {
             throw new Error('Cannot flag bots: No private key configured');
@@ -70,20 +61,19 @@ class ContractInteractor {
             const scores = goodBots.map(bot => bot.score);
             const botTypes = goodBots.map(bot => bot.botType || 'Market Maker');
             const liquidityAmounts = goodBots.map(bot => 
-                parseEther((bot.liquidityProvided || 0).toString())
+                ethers.parseEther((bot.liquidityProvided || 0).toString())
             );
             const reasons = goodBots.map(bot => 
                 `GOOD_BOT: ${bot.signals.slice(0, 3).join('; ')}`
             );
             
-            // Get Pyth price update data
-            const priceIds = [config.priceIds['BTC/USD']];
+            const priceIds = [appConfig.priceIds['BTC/USD']];
             const priceUpdateData = await this.getPythPriceUpdateData(priceIds);
             
             logger.info('✅ Got Pyth price update data for good bots');
             
-            const updateFee = await this.pythContract.getUpdateFee(priceUpdateData);
-            logger.info(`💰 Pyth update fee: ${formatEther(updateFee)} ETH`);
+            const updateFee = await this.contract.getUpdateFee(priceUpdateData);
+            logger.info(`💰 Pyth update fee: ${ethers.utils.formatEther(updateFee)} ETH`);
             
             const tx = await this.contract.flagGoodBotsWithPythProof(
                 users,
@@ -92,7 +82,7 @@ class ContractInteractor {
                 liquidityAmounts,
                 reasons,
                 priceUpdateData,
-                config.priceIds['BTC/USD'],
+                appConfig.priceIds['BTC/USD'],
                 {
                     value: updateFee,
                     gasLimit: 1000000
@@ -122,10 +112,6 @@ class ContractInteractor {
         }
     }
     
-    /**
-     * Flag BAD BOTS with Pyth price proof
-     * Bad bots are malicious/abusive traders (scores >= 60)
-     */
     async flagBadBotsWithPythProof(badBots) {
         if (!this.wallet) {
             throw new Error('Cannot flag bots: No private key configured');
@@ -147,14 +133,13 @@ class ContractInteractor {
                 `BAD_BOT: ${bot.signals.slice(0, 3).join('; ')}`
             );
             
-            // Get Pyth price update data
-            const priceIds = [config.priceIds['BTC/USD']];
+            const priceIds = [appConfig.priceIds['BTC/USD']];
             const priceUpdateData = await this.getPythPriceUpdateData(priceIds);
             
             logger.info('✅ Got Pyth price update data for bad bots');
             
-            const updateFee = await this.contract.pyth.getUpdateFee(priceUpdateData);
-            logger.info(`💰 Pyth update fee: ${formatEther(updateFee)} ETH`);
+            const updateFee = await this.contract.getUpdateFee(priceUpdateData);
+            logger.info(`💰 Pyth update fee: ${ethers.utils.formatEther(updateFee)} ETH`);
             
             const tx = await this.contract.flagBadBotsWithPythProof(
                 users,
@@ -162,7 +147,7 @@ class ContractInteractor {
                 riskLevels,
                 reasons,
                 priceUpdateData,
-                config.priceIds['BTC/USD'],
+                appConfig.priceIds['BTC/USD'],
                 {
                     value: updateFee,
                     gasLimit: 1000000
@@ -178,7 +163,6 @@ class ContractInteractor {
             logger.info(`   Gas used: ${receipt.gasUsed.toString()}`);
             logger.info(`   Block: ${receipt.blockNumber}`);
             logger.info(`   Category: MALICIOUS/ABUSIVE TRADING`);
-            logger.info(`   🚨 HIGH RISK - ACTION REQUIRED`);
             
             return { 
                 success: true, 
@@ -192,10 +176,7 @@ class ContractInteractor {
             return { success: false, error: error.message, category: 'BAD_BOT' };
         }
     }
-    
-    /**
-     * Flag both good and bad bots separately with Pyth proof
-     */
+
     async flagAllBotsWithPythProof(goodBots, badBots) {
         logger.info('🎯 Starting separate bot flagging process...');
         
@@ -210,7 +191,6 @@ class ContractInteractor {
             }
         };
         
-        // Flag good bots first
         if (goodBots.length > 0) {
             logger.info(`\n${'='.repeat(60)}`);
             logger.info('PHASE 1: Flagging GOOD BOTS (Legitimate Automated Trading)');
@@ -224,7 +204,6 @@ class ContractInteractor {
             }
         }
         
-        // Flag bad bots second
         if (badBots.length > 0) {
             logger.info(`\n${'='.repeat(60)}`);
             logger.info('PHASE 2: Flagging BAD BOTS (Malicious/Abusive Trading)');
@@ -238,7 +217,6 @@ class ContractInteractor {
             }
         }
         
-        // Summary
         logger.info(`\n${'='.repeat(60)}`);
         logger.info('BOT FLAGGING SUMMARY');
         logger.info(`${'='.repeat(60)}`);
@@ -249,90 +227,6 @@ class ContractInteractor {
         logger.info(`${'='.repeat(60)}\n`);
         
         return results;
-    }
-    
-    /**
-     * Regular flag function for good bots (no Pyth proof - cheaper)
-     */
-    async flagGoodBots(goodBots) {
-        if (!this.wallet) {
-            throw new Error('Cannot flag bots: No private key configured');
-        }
-        
-        if (goodBots.length === 0) {
-            return { success: true, count: 0 };
-        }
-        
-        try {
-            logger.info(`🟢 Flagging ${goodBots.length} GOOD BOTS (cheaper method)...`);
-            
-            const users = goodBots.map(bot => bot.user);
-            const scores = goodBots.map(bot => bot.score);
-            const botTypes = goodBots.map(bot => bot.botType || 'Market Maker');
-            const liquidityAmounts = goodBots.map(bot => 
-                parseEther((bot.liquidityProvided || 0).toString())
-            );
-            
-            const tx = await this.contract.flagGoodBots(
-                users, 
-                scores, 
-                botTypes, 
-                liquidityAmounts,
-                {
-                    gasLimit: 500000
-                }
-            );
-            
-            logger.info(`📤 Transaction sent: ${tx.hash}`);
-            const receipt = await tx.wait();
-            
-            logger.info(`✅ Good bots flagged! Gas used: ${receipt.gasUsed.toString()}`);
-            
-            return { success: true, txHash: tx.hash, receipt, count: goodBots.length };
-        } catch (error) {
-            logger.error(`❌ Error flagging good bots: ${error.message}`);
-            return { success: false, error: error.message };
-        }
-    }
-    
-    /**
-     * Regular flag function for bad bots (no Pyth proof - cheaper)
-     */
-    async flagBadBots(badBots) {
-        if (!this.wallet) {
-            throw new Error('Cannot flag bots: No private key configured');
-        }
-        
-        if (badBots.length === 0) {
-            return { success: true, count: 0 };
-        }
-        
-        try {
-            logger.info(`🔴 Flagging ${badBots.length} BAD BOTS (cheaper method)...`);
-            
-            const users = badBots.map(bot => bot.user);
-            const scores = badBots.map(bot => bot.score);
-            const riskLevels = badBots.map(bot => bot.riskLevel || 'MEDIUM');
-            
-            const tx = await this.contract.flagBadBots(
-                users, 
-                scores, 
-                riskLevels,
-                {
-                    gasLimit: 500000
-                }
-            );
-            
-            logger.info(`📤 Transaction sent: ${tx.hash}`);
-            const receipt = await tx.wait();
-            
-            logger.info(`✅ Bad bots flagged! Gas used: ${receipt.gasUsed.toString()}`);
-            
-            return { success: true, txHash: tx.hash, receipt, count: badBots.length };
-        } catch (error) {
-            logger.error(`❌ Error flagging bad bots: ${error.message}`);
-            return { success: false, error: error.message };
-        }
     }
 }
 

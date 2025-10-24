@@ -1,19 +1,21 @@
-require('dotenv').config();
+import 'dotenv/config';
+import contractData from './contract.json' with { type: 'json' };
 
-module.exports = {
+const appConfig = {
     // Server
     port: process.env.PORT || 3000,
     nodeEnv: process.env.NODE_ENV || 'development',
-
-    // Blockchain (Polygon Network)
-    rpcUrl: process.env.RPC_URL || 'https://polygon-rpc.com',
-    chainId: parseInt(process.env.CHAIN_ID || 137),
+rpcUrl: process.env.SEPOLIA_WSS_URL || 'wss://sepolia.infura.io/ws/v3/2758fd4e9f4640e2b22cddb3d671ba2e',
+chainId: parseInt(process.env.CHAIN_ID || 11155111),
+    contractAddress: contractData.address,
+    contractABI: contractData.abi,
     privateKey: process.env.PRIVATE_KEY,
 
     // Pyth Network
-    hermesUrl: process.env.HERMES_URL || 'https://hermes.pyth.network',
+    hermesUrl: process.env.HERMES_URL || 'https://hermes.pyth.network',  // Changed to HTTPS by default
+    hermesWsUrl: process.env.HERMES_WS_URL || 'wss://hermes-beta.pyth.network/ws', // Try beta endpoint
     priceIds: {
-        'BTC/USD': process.env.BTC_PRICE_ID || '0xe62df6c8b4d85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43',
+        'BTC/USD': process.env.BTC_PRICE_ID || '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43',
         'ETH/USD': process.env.ETH_PRICE_ID || '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
         'SOL/USD': process.env.SOL_PRICE_ID || '0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d'
     },
@@ -34,3 +36,5 @@ module.exports = {
     polymarketMaxTradeAmount: parseFloat(process.env.POLYMARKET_MAX_TRADE_AMOUNT || 10000.0),
     polymarketRiskLimit: parseFloat(process.env.POLYMARKET_RISK_LIMIT || 0.1)
 };
+
+export default appConfig;

@@ -1,38 +1,40 @@
-const express = require('express');
+import express from 'express';
+import pythClient from '../services/pythHermesClient.js';
+import botDetector from '../services/botDetector.js';
+import mainnetBotDetector from '../mainnet-bot-detector.js';
+import logger from '../utils/logger.js';
+import appConfig from '../config/appConfig.js';
+
+
 const router = express.Router();
-const pythClient = require('../services/pythHermesClient');
-const botDetector = require('../services/botDetector');
-const logger = require('../utils/logger');
 
 /**
  * GET /api/analytics/prices
- * Get all latest prices from Pyth
+ * Get all latest prices from Pyth (with HTTP fallback)
  */
-router.get('/prices', (req, res) => {
+router.get('/prices', async (req, res) => {
     try {
-        const pricesRaw = pythClient.getAllLatestPrices();
-        // Transform prices to include change and history for frontend
-        const prices = {};
-        for (const [asset, info] of Object.entries(pricesRaw)) {
-            if (!info) continue;
-            // Get price history
-            const priceId = require('../config/appConfig').priceIds[asset];
-            const historyRaw = pythClient.getPriceHistory(priceId, 30);
-            const history = historyRaw.map(h => ({
-                time: new Date(h.timestamp).toLocaleTimeString(),
-                price: h.price
-            }));
-            // Calculate change (last vs previous)
-            let change = 0;
-            if (history.length > 1) {
-                change = ((history[history.length-1].price - history[0].price) / history[0].price) * 100;
-            }
-            prices[asset] = {
-                price: info.price,
-                change,
-                history
-            };
+        let pricesByName = pythClient.getAllLatestPrices();
+        
+        // If WebSocket prices are empty, fetch from HTTP API as fallback
+        if (Object.keys(pricesByName).length === 0) {
+            logger.warn('No WebSocket prices available, using HTTP fallback');
+            pricesByName = await pythClient.fetchLatestPricesHTTP();
         }
+        
+        // Convert to price ID format for frontend compatibility
+        const prices = {};
+        for (const [assetName, priceData] of Object.entries(pricesByName)) {
+            // assetName is like 'BTC/USD', we need to get the priceId
+            const priceId = appConfig.priceIds[assetName];
+            if (priceId) {
+                // Remove '0x' prefix if present for consistency
+                const cleanPriceId = priceId.startsWith('0x') ? priceId.slice(2) : priceId;
+                prices[cleanPriceId] = priceData;
+            }
+        }
+        
+        logger.info(`Returning prices for ${Object.keys(prices).length} assets`);
         res.json({ prices });
     } catch (error) {
         logger.error(`Error fetching prices: ${error.message}`);
@@ -49,7 +51,7 @@ router.get('/prices/:asset', (req, res) => {
         const { asset } = req.params;
         const assetUpper = asset.toUpperCase();
         
-        const priceId = require('../config/config').priceIds[assetUpper];
+        const priceId = appConfig.priceIds[assetUpper];
         
         if (!priceId) {
             return res.status(404).json({ error: 'Asset not found' });
@@ -76,7 +78,7 @@ router.get('/prices/:asset', (req, res) => {
 
 /**
  * GET /api/analytics/bots/pending
- * Get pending bots (not yet flagged on-chain)
+ * Get all pending bots (combined)
  */
 router.get('/bots/pending', (req, res) => {
     try {
@@ -92,22 +94,156 @@ router.get('/bots/pending', (req, res) => {
 });
 
 /**
+ * GET /api/analytics/bots/good
+ * Get detected good bots (Market Makers & Arbitrage)
+ */
+router.get('/bots/good', (req, res) => {
+    try {
+        const goodBots = botDetector.getGoodBots();
+        res.json({
+            count: goodBots.length,
+            category: 'GOOD_BOT',
+            description: 'Market Makers & Arbitrage Bots providing liquidity',
+            bots: goodBots.map(bot => ({
+                user: bot.user,
+                score: bot.score,
+                signals: bot.signals,
+                liquidityProvided: bot.liquidityProvided,
+                botType: bot.botType,
+                detectedAt: bot.detectedAt
+            }))
+        });
+    } catch (error) {
+        logger.error(`Error fetching good bots: ${error.message}`);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * GET /api/analytics/bots/bad
+ * Get detected bad bots (Manipulative & Front-running)
+ */
+router.get('/bots/bad', (req, res) => {
+    try {
+        const badBots = botDetector.getBadBots();
+        res.json({
+            count: badBots.length,
+            category: 'BAD_BOT',
+            description: 'Manipulative & Front-running Bots',
+            bots: badBots.map(bot => ({
+                user: bot.user,
+                score: bot.score,
+                signals: bot.signals,
+                riskLevel: bot.riskLevel,
+                detectedAt: bot.detectedAt
+            }))
+        });
+    } catch (error) {
+        logger.error(`Error fetching bad bots: ${error.message}`);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * GET /api/analytics/bots/summary
+ * Get bot detection summary statistics
+ */
+router.get('/bots/summary', (req, res) => {
+    try {
+        const goodBots = botDetector.getGoodBots();
+        const badBots = botDetector.getBadBots();
+        
+        // Calculate statistics
+        const goodBotLiquidity = goodBots.reduce((sum, bot) => 
+            sum + (bot.liquidityProvided || 0), 0
+        );
+        
+        const riskDistribution = {
+            CRITICAL: badBots.filter(b => b.riskLevel === 'CRITICAL').length,
+            HIGH: badBots.filter(b => b.riskLevel === 'HIGH').length,
+            MEDIUM: badBots.filter(b => b.riskLevel === 'MEDIUM').length
+        };
+        
+        const botTypeDistribution = {};
+        goodBots.forEach(bot => {
+            const type = bot.botType || 'Unknown';
+            botTypeDistribution[type] = (botTypeDistribution[type] || 0) + 1;
+        });
+        
+        res.json({
+            summary: {
+                totalBots: goodBots.length + badBots.length,
+                goodBots: {
+                    count: goodBots.length,
+                    totalLiquidity: goodBotLiquidity,
+                    typeDistribution: botTypeDistribution
+                },
+                badBots: {
+                    count: badBots.length,
+                    riskDistribution: riskDistribution
+                }
+            },
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        logger.error(`Error fetching bot summary: ${error.message}`);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * GET /api/analytics/bots
+ * Get all detected bots (good and bad) - supports filtering by type
+ */
+router.get('/bots', (req, res) => {
+    try {
+        const { type } = req.query;
+        
+        // Get all bots from mainnetBotDetector
+        const allBots = mainnetBotDetector.getDetectedBots();
+        
+        // Filter by category
+        const goodBots = allBots.filter(bot => bot.category === 'GOOD_BOT');
+        const badBots = allBots.filter(bot => bot.category === 'BAD_BOT' || bot.category === 'SUSPICIOUS');
+        
+        // If type parameter is provided, return only that type
+        if (type === 'good') {
+            return res.json({ bots: goodBots, count: goodBots.length });
+        } else if (type === 'bad') {
+            return res.json({ bots: badBots, count: badBots.length });
+        }
+        
+        // Otherwise return both
+        res.json({
+            goodBots,
+            badBots,
+            total: goodBots.length + badBots.length
+        });
+    } catch (error) {
+        logger.error(`Error fetching bots: ${error.message}`);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
  * POST /api/analytics/bots/flag-now
  * Manually trigger batch flagging (admin only)
  */
 router.post('/bots/flag-now', async (req, res) => {
     try {
-        const pendingBots = botDetector.getPendingBots();
+        const goodBots = botDetector.getGoodBots();
+        const badBots = botDetector.getBadBots();
         
-        if (pendingBots.length === 0) {
+        if (goodBots.length === 0 && badBots.length === 0) {
             return res.json({ message: 'No pending bots to flag' });
         }
         
         await botDetector.batchFlagBots();
         
         res.json({
-            message: `Flagged ${pendingBots.length} bots`,
-            count: pendingBots.length
+            message: `Flagged ${goodBots.length + badBots.length} bots`,
+            goodBots: goodBots.length,
+            badBots: badBots.length
         });
     } catch (error) {
         logger.error(`Error manually flagging bots: ${error.message}`);
@@ -116,44 +252,43 @@ router.post('/bots/flag-now', async (req, res) => {
 });
 
 /**
- * GET /api/analytics/bots
- * Get bot summary and bot lists for dashboard
+ * GET /api/analytics/bots/statistics
+ * Get detailed bot statistics for dashboard
  */
-router.get('/bots', async (req, res) => {
+router.get('/bots/statistics', (req, res) => {
     try {
-        // Optionally filter by type
-        const type = req.query.type;
-        let bots = botDetector.getPendingBots();
-        if (type === 'good') {
-            bots = bots.filter(bot => bot.score < config.botScoreThreshold);
-        } else if (type === 'bad') {
-            bots = bots.filter(bot => bot.score >= config.botScoreThreshold);
-        }
-        // Compose summary
-        const totalBots = bots.length;
-        const goodBots = bots.filter(bot => bot.score < config.botScoreThreshold).length;
-        const badBots = bots.filter(bot => bot.score >= config.botScoreThreshold).length;
-        // Risk/type distribution (demo)
-        const riskDistribution = [
-            { name: 'Critical', value: badBots, color: '#ef4444' },
-            { name: 'Low', value: goodBots, color: '#22c55e' }
-        ];
-        const typeDistribution = [
-            { name: 'Sniper', value: Math.floor(badBots/2), color: '#f59e42' },
-            { name: 'Arbitrage', value: Math.ceil(badBots/2), color: '#6366f1' }
-        ];
+        const goodBots = botDetector.getGoodBots();
+        const badBots = botDetector.getBadBots();
+        
         res.json({
-            totalBots,
-            goodBots,
-            badBots,
-            riskDistribution,
-            typeDistribution,
-            bots
+            statistics: {
+                total: {
+                    bots: goodBots.length + badBots.length,
+                    good: goodBots.length,
+                    bad: badBots.length
+                },
+                goodBots: {
+                    marketMakers: goodBots.filter(b => b.botType === 'Market Maker').length,
+                    arbitrageBots: goodBots.filter(b => b.botType === 'Arbitrage Bot').length,
+                    totalLiquidity: goodBots.reduce((sum, b) => sum + (b.liquidityProvided || 0), 0)
+                },
+                badBots: {
+                    critical: badBots.filter(b => b.riskLevel === 'CRITICAL').length,
+                    high: badBots.filter(b => b.riskLevel === 'HIGH').length,
+                    medium: badBots.filter(b => b.riskLevel === 'MEDIUM').length
+                },
+                recentDetections: {
+                    last24h: [...goodBots, ...badBots].filter(b => 
+                        Date.now() - b.detectedAt < 24 * 60 * 60 * 1000
+                    ).length
+                }
+            },
+            timestamp: Date.now()
         });
     } catch (error) {
-        logger.error(`Error fetching bot stats: ${error.message}`);
+        logger.error(`Error fetching bot statistics: ${error.message}`);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-module.exports = router;
+export default router;
