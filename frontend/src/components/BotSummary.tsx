@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
-import { Activity, Shield, AlertTriangle } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { Activity, Shield, AlertTriangle, RefreshCw } from 'lucide-react';
+import { useBotSummary } from '../hooks/useBackendData';
 
 interface BotStats {
   totalBots: number;
@@ -11,43 +11,30 @@ interface BotStats {
 }
 
 export default function BotSummary() {
-  const [stats, setStats] = useState<BotStats>({
+  const { data, loading, error, refresh } = useBotSummary(true, 30000);
+
+  // Transform backend data to component format
+  const stats: BotStats = data ? {
+    totalBots: data.summary.totalBots,
+    goodBots: data.summary.goodBots.count,
+    badBots: data.summary.badBots.count,
+    riskDistribution: [
+      { name: 'Critical', value: data.summary.badBots.riskDistribution.CRITICAL, color: '#ef4444' },
+      { name: 'High', value: data.summary.badBots.riskDistribution.HIGH, color: '#f97316' },
+      { name: 'Medium', value: data.summary.badBots.riskDistribution.MEDIUM, color: '#eab308' },
+    ].filter(item => item.value > 0),
+    typeDistribution: Object.entries(data.summary.goodBots.typeDistribution).map(([name, value], index) => ({
+      name,
+      value: value as number,
+      color: index === 0 ? '#10b981' : '#06b6d4',
+    })).filter(item => item.value > 0),
+  } : {
     totalBots: 0,
     goodBots: 0,
     badBots: 0,
     riskDistribution: [],
     typeDistribution: [],
-  });
-
-  useEffect(() => {
-    const fetchBotStats = async () => {
-      try {
-        // Fetch bot stats from backend instead of supabase
-        const response = await fetch('/api/analytics/bots');
-        if (!response.ok) throw new Error('Failed to fetch bot stats');
-        const data = await response.json();
-        setStats({
-          totalBots: (data.total !== undefined) ? data.total : 0,
-          goodBots: (data.goodBots !== undefined) ? data.goodBots.length : (data.goodBots ? data.goodBots : 0),
-          badBots: (data.badBots !== undefined) ? data.badBots.length : (data.badBots ? data.badBots : 0),
-          riskDistribution: data.riskDistribution || [],
-          typeDistribution: data.typeDistribution || [],
-        });
-      } catch (error) {
-        setStats({
-          totalBots: 0,
-          goodBots: 0,
-          badBots: 0,
-          riskDistribution: [],
-          typeDistribution: [],
-        });
-        console.error('Error fetching bot stats:', error);
-      }
-    };
-    fetchBotStats();
-    const interval = setInterval(fetchBotStats, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  };
 
   const StatCard = ({
     icon: Icon,
@@ -73,8 +60,34 @@ export default function BotSummary() {
     </div>
   );
 
+  if (error) {
+    return (
+      <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-6">
+        <p className="text-red-400">Error loading bot data: {error}</p>
+        <button
+          onClick={refresh}
+          className="mt-4 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold text-white">Live Bot Detection</h3>
+        <button
+          onClick={refresh}
+          disabled={loading}
+          className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard icon={Activity} label="Total Bots" value={stats.totalBots} color="cyan" />
         <StatCard icon={Shield} label="Good Bots" value={stats.goodBots} color="green" />
