@@ -1,32 +1,38 @@
-require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
+import "@nomicfoundation/hardhat-toolbox";
+import "dotenv/config";
 
-// Debug: Check if environment variables are loaded
-console.log("Loading environment variables...");
-console.log("INFURA_API_KEY exists:", !!process.env.INFURA_API_KEY);
-console.log("ALCHEMY_API_KEY exists:", !!process.env.ALCHEMY_API_KEY);
-console.log("PRIVATE_KEY exists:", !!process.env.PRIVATE_KEY);
-
-const INFURA_API_KEY = process.env.INFURA_API_KEY || "";
-const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || "";
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "";
+const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || "";
+const MAINNET_RPC_URL = process.env.MAINNET_RPC_URL || "";
 
-if (!PRIVATE_KEY) {
-  console.error("⚠️  WARNING: PRIVATE_KEY not found in .env file");
-}
-
-if (!INFURA_API_KEY && !ALCHEMY_API_KEY) {
-  console.error("⚠️  WARNING: Neither INFURA_API_KEY nor ALCHEMY_API_KEY found in .env file");
-}
-
-module.exports = {
-  solidity: "0.8.19",
+const config = {
+  solidity: {
+    version: "0.8.19",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200
+      },
+      viaIR: true,
+    },
+  },
   networks: {
+    localhost: {
+      url: "http://127.0.0.1:8545/",
+      chainId: 31337,
+    },
     sepolia: {
-      url: INFURA_API_KEY 
-        ? `https://sepolia.infura.io/v3/${INFURA_API_KEY}`
-        : `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
+      url: SEPOLIA_RPC_URL,
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
+      chainId: 11155111,
+    },
+    mainnet: {
+      url: MAINNET_RPC_URL,
+      accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
+      chainId: 1,
+      enabled: false // Disable mainnet until we have access
     }
-  }
+  },
 };
+
+export default config;

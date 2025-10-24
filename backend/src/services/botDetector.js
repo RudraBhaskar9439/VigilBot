@@ -1,20 +1,43 @@
-const config = require('../config/config');
-const pythClient = require('./pythHermesClient');
-const blockchainListener = require('./blockchainListener');
-const logger = require('../utils/logger');
+import config from '../config/appConfig.js';
+import pythClient from './pythHermesClient.js';
+import blockchainListener from './blockchainListener.js';
+import contractInteractor from './contractInteractor.js';
+import logger from '../utils/logger.js';
 
 class BotDetector {
     constructor() {
-        this.detectedBots = [];
+        this.detectedGoodBots = [];    // Market makers, arbitrage bots with good behavior
+        this.detectedBadBots = [];     // Definitively malicious bots
+        this.suspiciousBots = [];      // Bots that show automated behavior but aren't clearly malicious
         this.userAnalytics = new Map();
+        this.flagWithProof = true;
+        
+        // Bot classification thresholds with adjusted scores
+        this.GOOD_BOT_MIN_SCORE = 60;  // Threshold for suspicious automated activity
+        this.BAD_BOT_MIN_SCORE = 80;   // Threshold for definitive bot detection
+        
+        // Liquidity threshold for good bot classification
+        this.LIQUIDITY_THRESHOLD = 1000; // Increased to $1000 for more accurate detection
+        this.MIN_TRADES_FOR_LIQUIDITY_CHECK = 10; // Increased minimum trades requirement
     }
     
     /**
-     * Analyze a trade and calculate bot score
+     * Initialize the bot detector
+     */
+    async initialize() {
+        logger.info('🤖 Bot Detector initialized with Good/Bad bot classification');
+        logger.info(`   Good Bot Range: ${this.GOOD_BOT_MIN_SCORE}-${this.BAD_BOT_MIN_SCORE - 1} (Market Makers & Arbitrage)`);
+        logger.info(`   Bad Bot Range: ${this.BAD_BOT_MIN_SCORE}+ (Manipulative & Front-running)`);
+        logger.info(`   Liquidity Threshold: $${this.LIQUIDITY_THRESHOLD}`);
+    }
+    
+    /**
+     * Analyze a trade and calculate bot score with good/bad classification
      */
     async analyzeTrade(tradeData) {
         let botScore = 0;
         const signals = [];
+        let botCategory = 'HUMAN'; // HUMAN, GOOD_BOT, or BAD_BOT
         
         // Get user's trade history
         const userTrades = await blockchainListener.getUserTrades(tradeData.user);
@@ -25,7 +48,7 @@ class BotDetector {
         if (reactionScore.signal) signals.push(reactionScore.signal);
         
         // Check 2: Trading Pattern Consistency
-        if (userTrades.length >= 5) {
+        if (userTrades.length >= 3) { // Reduced minimum trades requirement
             const patternScore = this.checkTradingPattern(userTrades);
             botScore += patternScore.score;
             if (patternScore.signal) signals.push(patternScore.signal);
@@ -48,25 +71,193 @@ class BotDetector {
         botScore += multiPoolScore.score;
         if (multiPoolScore.signal) signals.push(multiPoolScore.signal);
         
-        const isBot = botScore >= config.botScoreThreshold;
+        // Check 6: Liquidity Provision Analysis (determines good vs bad bot)
+        const liquidityAnalysis = await this.analyzeLiquidityProvision(tradeData.user, userTrades);
         
-        logger.info(`🔍 Analysis for ${tradeData.user}: Score ${botScore}/100 - ${isBot ? 'BOT' : 'HUMAN'}`);
+        // Classify the bot
+        if (botScore >= this.BAD_BOT_MIN_SCORE) {
+            // High score = potentially malicious
+            if (liquidityAnalysis.isLiquidityProvider) {
+                // Even with high score, if providing liquidity, classify as GOOD_BOT
+                botCategory = 'GOOD_BOT';
+                botScore = Math.min(botScore, this.BAD_BOT_MIN_SCORE - 1); // Cap below BAD_BOT threshold
+                signals.push(`Liquidity Provider: $${liquidityAnalysis.totalLiquidity.toFixed(2)}`);
+                logger.info(`✅ High-frequency trader providing liquidity: ${tradeData.user}`);
+            } else {
+                // High score + no liquidity provision = BAD_BOT
+                botCategory = 'BAD_BOT';
+                signals.push('No significant liquidity provision');
+                logger.warn(`🚨 Malicious bot detected: ${tradeData.user} (Score: ${botScore})`);
+            }
+        } else if (botScore >= this.GOOD_BOT_MIN_SCORE) {
+            // Medium score = suspicious but not definitively malicious
+            if (liquidityAnalysis.isLiquidityProvider) {
+                botCategory = 'GOOD_BOT';
+                signals.push(`Liquidity Provider: $${liquidityAnalysis.totalLiquidity.toFixed(2)}`);
+                logger.info(`🟢 Good bot detected (Market Maker/Arbitrage): ${tradeData.user}`);
+            } else {
+                botCategory = 'SUSPICIOUS';  // New category for scores between GOOD and BAD
+                signals.push('Suspicious automated trading pattern');
+                logger.warn(`⚠️ Suspicious activity detected: ${tradeData.user} (Score: ${botScore})`);
+            }
+        } else {
+            // Low score = human trader
+            botCategory = 'HUMAN';
+        }
         
-        if (isBot) {
-            this.detectedBots.push({
+        // Store in appropriate array
+        if (botCategory === 'GOOD_BOT') {
+            this.detectedGoodBots.push({
                 user: tradeData.user,
                 score: botScore,
                 signals: signals,
-                detectedAt: Date.now()
+                detectedAt: Date.now(),
+                liquidityProvided: liquidityAnalysis.totalLiquidity,
+                category: 'GOOD_BOT',
+                type: liquidityAnalysis.botType
             });
             
-            // Batch flag when we have enough
-            if (this.detectedBots.length >= config.batchSize) {
-                await this.batchFlagBots();
+            logger.info(`🟢 Good Bot Added: ${tradeData.user} (Score: ${botScore})`);
+            logger.info(`   Type: ${liquidityAnalysis.botType}`);
+            logger.info(`   Liquidity: $${liquidityAnalysis.totalLiquidity.toFixed(2)}`);
+        } else if (botCategory === 'BAD_BOT') {
+            this.detectedBadBots.push({
+                user: tradeData.user,
+                score: botScore,
+                signals: signals,
+                detectedAt: Date.now(),
+                category: 'BAD_BOT',
+                riskLevel: this.calculateRiskLevel(botScore, signals)
+            });
+            
+            logger.warn(`🔴 Bad Bot Added: ${tradeData.user} (Score: ${botScore})`);
+            logger.warn(`   Risk Level: ${this.calculateRiskLevel(botScore, signals)}`);
+        }
+        
+        // Batch flag when we have enough bots
+        if (this.detectedGoodBots.length + this.detectedBadBots.length >= config.batchSize) {
+            await this.batchFlagBots();
+        }
+        
+        // Trigger immediate flagging for testing
+        await this.batchFlagBots();
+        
+        return { 
+            isBot: botCategory !== 'HUMAN',
+            botScore, 
+            signals,
+            category: botCategory,
+            liquidityAnalysis
+        };
+    }
+    
+    /**
+     * NEW: Analyze if the bot is providing liquidity (Market Maker/Arbitrage)
+     */
+    async analyzeLiquidityProvision(userAddress, userTrades) {
+        if (userTrades.length < this.MIN_TRADES_FOR_LIQUIDITY_CHECK) {
+            return {
+                isLiquidityProvider: false,
+                totalLiquidity: 0,
+                botType: 'Unknown'
+            };
+        }
+        
+        // Calculate total volume traded
+        const totalVolume = userTrades.reduce((sum, trade) => {
+            return sum + parseFloat(trade.amount || 0);
+        }, 0);
+        
+        // Check for market maker patterns
+        const isMarketMaker = this.detectMarketMakerPattern(userTrades);
+        
+        // Check for arbitrage patterns
+        const isArbitrageBot = this.detectArbitragePattern(userTrades);
+        
+        // Determine if this bot is beneficial
+        const isLiquidityProvider = (
+            (isMarketMaker || isArbitrageBot) && 
+            totalVolume >= this.LIQUIDITY_THRESHOLD
+        );
+        
+        let botType = 'Unknown';
+        if (isMarketMaker) botType = 'Market Maker';
+        else if (isArbitrageBot) botType = 'Arbitrage Bot';
+        
+        return {
+            isLiquidityProvider,
+            totalLiquidity: totalVolume,
+            botType,
+            isMarketMaker,
+            isArbitrageBot
+        };
+    }
+    
+    /**
+     * Detect Market Maker pattern: Frequent buy/sell orders with consistent spreads
+     */
+    detectMarketMakerPattern(userTrades) {
+        if (userTrades.length < 10) return false;
+        
+        // Market makers typically:
+        // 1. Trade frequently (multiple times per hour)
+        // 2. Have consistent trade sizes
+        // 3. Trade on both sides (buy and sell)
+        
+        // Convert timestamps to hours and calculate trading frequency
+        const startTime = userTrades[0].timestamp; // Already in seconds
+        const endTime = userTrades[userTrades.length - 1].timestamp;
+        const hoursDiff = Math.max((endTime - startTime) / 3600, 1); // Convert seconds to hours with 1 hour minimum
+        const tradingFrequency = userTrades.length / hoursDiff;
+
+        // Check if trading frequency is high (>50 trades per hour)
+        const hasHighFrequency = tradingFrequency > 50;
+        logger.info(`Trading frequency for ${userTrades[0].user}: ${tradingFrequency.toFixed(2)} trades/hour`);
+        
+        // Check for consistent trade sizes (market makers use similar sizes)
+        const amounts = userTrades.map(t => parseFloat(t.amount || 0));
+        const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+        const variance = amounts.reduce((sum, amount) => {
+            return sum + Math.pow(amount - avgAmount, 2);
+        }, 0) / amounts.length;
+        const stdDev = Math.sqrt(variance);
+        const hasConsistentSizes = (stdDev / avgAmount) < 0.5; // Low variance
+        
+        return hasHighFrequency && hasConsistentSizes;
+    }
+    
+    /**
+     * Detect Arbitrage pattern: Quick trades exploiting price differences
+     */
+    detectArbitragePattern(userTrades) {
+        if (userTrades.length < 5) return false;
+        
+        // Arbitrage bots typically:
+        // 1. Execute trades very quickly (within seconds)
+        // 2. Trade in bursts
+        // 3. Have precise trade amounts
+        
+        let burstCount = 0;
+        for (let i = 1; i < userTrades.length; i++) {
+            // Compare timestamps (already in seconds)
+            const timeDiff = Math.abs(userTrades[i].timestamp - userTrades[i - 1].timestamp);
+            if (timeDiff < 2) { // Within 2 seconds
+                burstCount++;
             }
         }
         
-        return { isBot, botScore, signals };
+        const burstRatio = burstCount / userTrades.length;
+        logger.info(`Burst ratio for ${userTrades[0].user}: ${(burstRatio * 100).toFixed(1)}%`);
+        return burstRatio > 0.4; // More than 40% of trades are in bursts
+    }
+    
+    /**
+     * Calculate risk level for bad bots
+     */
+    calculateRiskLevel(score, signals) {
+        if (score >= 80) return 'CRITICAL';
+        if (score >= 70) return 'HIGH';
+        return 'MEDIUM';
     }
     
     /**
@@ -74,27 +265,33 @@ class BotDetector {
      */
     checkReactionTime(tradeData) {
         const btcPrice = pythClient.getLatestPrice(config.priceIds['BTC/USD']);
+        const ethPrice = pythClient.getLatestPrice(config.priceIds['ETH/USD']);
+        const solPrice = pythClient.getLatestPrice(config.priceIds['SOL/USD']);
         
-        if (!btcPrice) {
-            return { score: 0, signal: null };
+        // Use any available price feed for reaction time
+        const latestPrice = btcPrice || ethPrice || solPrice;
+        
+        if (!latestPrice) {
+            logger.warn('No price data available from Pyth');
+            return { score: 15, signal: 'Price feed check skipped' }; // Give partial score when price unavailable
         }
         
-        const reactionTime = tradeData.timestamp - btcPrice.publishTime;
+        const reactionTime = Math.abs(tradeData.timestamp - latestPrice.publishTime);
         
-        if (reactionTime < 1) {
+        if (reactionTime < 100) {  // Sub 100ms is definitely bot-like
             return {
-                score: 30,
-                signal: `Sub-second reaction: ${reactionTime.toFixed(3)}s`
+                score: 35,
+                signal: `Bot-level reaction time (<100ms)`
             };
-        } else if (reactionTime < 3) {
+        } else if (reactionTime < 500) {  // 500ms is still very fast but possible for humans
+            return {
+                score: 25,
+                signal: `Very fast reaction (<500ms)`
+            };
+        } else if (reactionTime < 1000) {  // 1 second is normal human reaction
             return {
                 score: 15,
-                signal: `Very fast reaction: ${reactionTime.toFixed(2)}s`
-            };
-        } else if (reactionTime < 5) {
-            return {
-                score: 5,
-                signal: `Fast reaction: ${reactionTime.toFixed(2)}s`
+                signal: `Fast reaction (<1s)`
             };
         }
         
@@ -109,36 +306,33 @@ class BotDetector {
             return { score: 0, signal: null };
         }
         
-        // Calculate intervals between trades
         const intervals = [];
         for (let i = 1; i < userTrades.length; i++) {
             intervals.push(userTrades[i].timestamp - userTrades[i - 1].timestamp);
         }
         
-        // Calculate standard deviation
         const mean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
         const variance = intervals.reduce((sum, interval) => {
             return sum + Math.pow(interval - mean, 2);
         }, 0) / intervals.length;
         const stdDev = Math.sqrt(variance);
         
-        // Calculate consistency (lower stdDev = more consistent = more bot-like)
         const consistency = stdDev === 0 ? 100 : (1 - Math.min(stdDev / mean, 1)) * 100;
         
-        if (consistency > 90) {
+        if (consistency > 95) {  // Almost perfect consistency is bot-like
+            return {
+                score: 35,
+                signal: `Extremely consistent pattern (${consistency.toFixed(1)}%)`
+            };
+        } else if (consistency > 90) {
             return {
                 score: 25,
-                signal: `Very consistent trading pattern: ${consistency.toFixed(1)}%`
+                signal: `Very consistent pattern (${consistency.toFixed(1)}%)`
             };
-        } else if (consistency > 80) {
+        } else if (consistency > 85) {
             return {
                 score: 15,
-                signal: `Consistent trading pattern: ${consistency.toFixed(1)}%`
-            };
-        } else if (consistency > 70) {
-            return {
-                score: 5,
-                signal: `Somewhat consistent pattern: ${consistency.toFixed(1)}%`
+                signal: `Consistent pattern (${consistency.toFixed(1)}%)`
             };
         }
         
@@ -146,16 +340,13 @@ class BotDetector {
     }
     
     /**
-     * Check 3: Precision Analysis (exact calculations vs rounded)
+     * Check 3: Precision Analysis
      */
     checkPrecision(tradeData) {
         const amount = parseFloat(tradeData.amount);
-        
-        // Check if amount is rounded (humans typically use round numbers)
         const isRounded = amount % 1000 === 0 || amount % 100 === 0 || amount % 10 === 0;
         
         if (!isRounded) {
-            // Count decimal places
             const amountStr = amount.toString();
             const decimalPlaces = amountStr.includes('.') 
                 ? amountStr.split('.')[1].length 
@@ -163,12 +354,12 @@ class BotDetector {
             
             if (decimalPlaces > 6) {
                 return {
-                    score: 25,
+                    score: 30,
                     signal: `Extreme precision: ${decimalPlaces} decimal places`
                 };
             } else if (decimalPlaces > 4) {
                 return {
-                    score: 15,
+                    score: 20,
                     signal: `High precision: ${decimalPlaces} decimal places`
                 };
             } else if (decimalPlaces > 2) {
@@ -186,8 +377,8 @@ class BotDetector {
      * Check 4: 24/7 Trading Activity
      */
     check24x7Activity(userTrades) {
-        // Get unique hours of trading
         const hours = userTrades.map(trade => {
+            // Timestamps are in seconds, convert to milliseconds for Date
             const date = new Date(trade.timestamp * 1000);
             return date.getUTCHours();
         });
@@ -195,14 +386,14 @@ class BotDetector {
         const uniqueHours = new Set(hours);
         const hourCoverage = (uniqueHours.size / 24) * 100;
         
-        if (hourCoverage > 80) {
+        if (hourCoverage > 70) {
             return {
-                score: 20,
+                score: 25,
                 signal: `24/7 trading: ${uniqueHours.size} different hours`
             };
-        } else if (hourCoverage > 60) {
+        } else if (hourCoverage > 50) {
             return {
-                score: 10,
+                score: 15,
                 signal: `Extensive trading: ${uniqueHours.size} different hours`
             };
         }
@@ -214,11 +405,7 @@ class BotDetector {
      * Check 5: Multi-Pool Monitoring
      */
     checkMultiPoolActivity(userAddress) {
-        // Track which price feeds this user's trades correlate with
         const analytics = this.userAnalytics.get(userAddress) || { priceFeeds: new Set() };
-        
-        // For demo, assume user queries multiple feeds if they trade frequently
-        // In production, you'd track actual price feed queries
         
         if (analytics.priceFeeds.size > 5) {
             return {
@@ -236,25 +423,67 @@ class BotDetector {
     }
     
     /**
-     * Batch flag bots on-chain (gas optimization)
+     * Batch flag bots - NOW HANDLES GOOD AND BAD BOTS SEPARATELY
      */
     async batchFlagBots() {
-        if (this.detectedBots.length === 0) return;
-        
-        logger.info(`🔨 Batch flagging ${this.detectedBots.length} bots...`);
-        
-        const users = this.detectedBots.map(bot => bot.user);
-        const scores = this.detectedBots.map(bot => bot.score);
-        const reasons = this.detectedBots.map(bot => bot.signals.slice(0, 3).join('; '));
-        
-        const result = await blockchainListener.flagBots(users, scores, reasons);
-        
-        if (result.success) {
-            logger.info(`✅ Successfully flagged ${this.detectedBots.length} bots`);
-            this.detectedBots = []; // Clear the batch
-        } else {
-            logger.error(`❌ Failed to flag bots: ${result.error}`);
+        if (this.detectedGoodBots.length === 0 && this.detectedBadBots.length === 0) {
+            return;
         }
+        
+        logger.info(`\n${'='.repeat(60)}`);
+        logger.info(`🎯 BATCH FLAGGING BOTS`);
+        logger.info(`${'='.repeat(60)}`);
+        logger.info(`🟢 Good Bots to flag: ${this.detectedGoodBots.length}`);
+        logger.info(`🔴 Bad Bots to flag: ${this.detectedBadBots.length}`);
+        logger.info(`${'='.repeat(60)}\n`);
+        
+        let result;
+        
+        if (this.flagWithProof) {
+            // Use Pyth proof for both good and bad bots separately
+            logger.info('🎯 Using Pyth price proof (separate good/bad bot arrays)');
+            result = await contractInteractor.flagAllBotsWithPythProof(
+                this.detectedGoodBots,
+                this.detectedBadBots
+            );
+        } else {
+            // Regular flagging for both categories
+            logger.info('💰 Using regular flagging (cost-efficient mode)');
+            const goodResult = await contractInteractor.flagGoodBots(this.detectedGoodBots);
+            const badResult = await contractInteractor.flagBadBots(this.detectedBadBots);
+            result = {
+                goodBots: goodResult,
+                badBots: badResult,
+                summary: {
+                    totalGoodBots: this.detectedGoodBots.length,
+                    totalBadBots: this.detectedBadBots.length,
+                    successfulFlags: (goodResult.success ? goodResult.count : 0) + 
+                                   (badResult.success ? badResult.count : 0),
+                    failedFlags: (!goodResult.success ? this.detectedGoodBots.length : 0) +
+                               (!badResult.success ? this.detectedBadBots.length : 0)
+                }
+            };
+        }
+        
+        if (result.summary.successfulFlags > 0) {
+            logger.info(`✅ Successfully flagged ${result.summary.successfulFlags} bots`);
+            logger.info(`   🟢 Good Bots: ${result.summary.totalGoodBots}`);
+            logger.info(`   🔴 Bad Bots: ${result.summary.totalBadBots}`);
+            
+            // Clear both arrays
+            this.detectedGoodBots = [];
+            this.detectedBadBots = [];
+        } else {
+            logger.error(`❌ Failed to flag bots`);
+        }
+    }
+    
+    /**
+     * Toggle between Pyth proof mode and regular mode
+     */
+    setProofMode(useProof) {
+        this.flagWithProof = useProof;
+        logger.info(`🔧 Proof mode: ${useProof ? 'ON (Pyth integration)' : 'OFF (cost-efficient)'}`);
     }
     
     /**
@@ -269,11 +498,11 @@ class BotDetector {
                 user: userAddress,
                 totalTrades: 0,
                 isFlagged: botStatus.isFlagged,
-                botScore: botStatus.score
+                botScore: botStatus.score,
+                category: 'UNKNOWN'
             };
         }
         
-        // Calculate trading statistics
         const intervals = [];
         for (let i = 1; i < trades.length; i++) {
             intervals.push(trades[i].timestamp - trades[i - 1].timestamp);
@@ -286,11 +515,20 @@ class BotDetector {
         const hours = trades.map(trade => new Date(trade.timestamp * 1000).getUTCHours());
         const uniqueHours = new Set(hours).size;
         
+        // Determine category based on score
+        let category = 'HUMAN';
+        if (botStatus.score >= this.BAD_BOT_MIN_SCORE) {
+            category = 'BAD_BOT';
+        } else if (botStatus.score >= this.GOOD_BOT_MIN_SCORE) {
+            category = 'GOOD_BOT';
+        }
+        
         return {
             user: userAddress,
             totalTrades: trades.length,
             isFlagged: botStatus.isFlagged,
             botScore: botStatus.score,
+            category: category,
             avgInterval: avgInterval,
             uniqueHoursTraded: uniqueHours,
             firstTrade: trades[0].timestamp,
@@ -299,11 +537,32 @@ class BotDetector {
     }
     
     /**
-     * Get all detected bots (pending flagging)
+     * Get all detected good bots
+     */
+    getGoodBots() {
+        return this.detectedGoodBots;
+    }
+    
+    /**
+     * Get all detected bad bots
+     */
+    getBadBots() {
+        return this.detectedBadBots;
+    }
+    
+    /**
+     * Get all pending bots (combined for backward compatibility)
      */
     getPendingBots() {
-        return this.detectedBots;
+        return [...this.detectedGoodBots, ...this.detectedBadBots];
+    }
+    
+    /**
+     * Get flagged users (backward compatibility)
+     */
+    getFlaggedUsers() {
+        return this.getPendingBots();
     }
 }
 
-module.exports = new BotDetector();
+export default new BotDetector();

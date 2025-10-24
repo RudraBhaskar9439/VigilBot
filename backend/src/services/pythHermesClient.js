@@ -1,34 +1,32 @@
-const { HermesClient } = require('@pythnetwork/hermes-client');
-const config = require('../config/appConfig');
-const logger = require('../utils/logger');
+import WebSocket from 'ws';
+import config from '../config/appConfig.js';
+import logger from '../utils/logger.js';
 
 class PythHermesClient {
     constructor() {
-        // Check if Hermes URL is configured
         if (!config.hermesUrl) {
-            logger.error('❌ HERMES_URL not configured. Please set HERMES_URL in your .env file');
-            this.client = null;
-            this.latestPrices = new Map();
-            this.priceHistory = new Map();
-            this.isStreaming = false;
+            logger.error('Hermes URL not configured');
             this.isConfigured = false;
             return;
         }
         
-        this.client = new HermesClient(config.hermesUrl);
         this.latestPrices = new Map();
         this.priceHistory = new Map();
         this.isStreaming = false;
         this.isConfigured = true;
+        this.lastUpdateTime = Date.now();
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnecting = false;
+        this.subscribedFeeds = new Set();
     }
 
-
     /**
-     * Start streaming live pricess for free
+     * Start streaming live prices
      */
     async startPriceStream() {
         if (!this.isConfigured) {
-            logger.error('❌ Cannot start price stream: Pyth client not properly configured');
+            logger.error('Cannot start price stream: Pyth client not properly configured');
             return;
         }
         
@@ -36,88 +34,251 @@ class PythHermesClient {
             logger.warn('Price stream already running');
             return;
         }
+        
         this.isStreaming = true;
-        const priceIds = Object.values(config.priceIds).filter(id => id); // Filter out undefined IDs
+        this.reconnectAttempts = 0;
+        this.subscribedFeeds.clear();
+        const priceIds = Object.values(config.priceIds).filter(id => id);
 
         if (priceIds.length === 0) {
-            logger.error('❌ No valid price IDs configured. Please set BTC_PRICE_ID, ETH_PRICE_ID, SOL_PRICE_ID in your .env file');
+            logger.error('No valid price IDs configured');
             this.isStreaming = false;
             return;
         }
 
-        logger.info(` LIVE: Starting Pyth price stream for ${priceIds.length} feeds (FREE!)`);
+        logger.info(`Starting Pyth price stream for ${priceIds.length} feeds`);
+        
+        // Set up health check to monitor connection and subscriptions
+        if (this.healthCheckInterval) {
+            clearInterval(this.healthCheckInterval);
+        }
+        
+        this.healthCheckInterval = setInterval(() => {
+            if (!this.isStreaming || this.reconnecting) return;
+            
+            // Check for missing subscriptions
+            const missingSubscriptions = priceIds.filter(id => !this.subscribedFeeds.has(id));
+            if (missingSubscriptions.length > 0) {
+                logger.warn(`Re-subscribing to ${missingSubscriptions.length} missing feeds`);
+                this.subscribe(missingSubscriptions);
+            }
+
+            // Check for stale data
+            const timeSinceLastUpdate = (Date.now() - this.lastUpdateTime) / 1000;
+            if (timeSinceLastUpdate > 10) {
+                logger.warn(`No price updates for ${timeSinceLastUpdate.toFixed(1)}s, reconnecting...`);
+                this.reconnect(priceIds);
+            }
+        }, 5000);
         
         try {
-            // Subscribe to price updates
-            const priceFeeds = this.client.getPriceUpdatesStream(priceIds);
-            
-            // Handle the stream properly
-            if (priceFeeds && typeof priceFeeds[Symbol.asyncIterator] === 'function') {
-                for await (const priceUpdate of priceFeeds) {
-                    if (priceUpdate && priceUpdate.parsed) {
-                        for (const priceFeed of priceUpdate.parsed) {
-                            this.processPriceUpdate(priceFeed);
-                        }
-                    }
-                }
-            } else {
-                // Fallback: use polling if streaming is not available
-                logger.warn('Streaming not available, falling back to polling');
-                this.startPolling();
-            }
+            await this.connect(priceIds);
         } catch (error) {
-            logger.error(`Error in price stream: ${error.message}`);
-            this.isStreaming = false;
-            
-            // Retry after 5 seconds
-            setTimeout(() => this.startPriceStream(), 100);
+            logger.error(`Failed to start price stream: ${error.message}`);
+            this.cleanup();
         }
     }
-    
+
     /**
-     * Fallback polling method when streaming is not available
+     * Connect to WebSocket and set up handlers
      */
-    async startPolling() {
-        const priceIds = Object.values(config.priceIds);
-        logger.info('Starting price polling as fallback');
-        
-        const pollInterval = setInterval(async () => {
-            if (!this.isStreaming) {
-                clearInterval(pollInterval);
-                return;
+    async connect(priceIds) {
+        if (this.ws) {
+            this.ws.terminate();
+            this.ws = null;
+        }
+
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
+
+        return new Promise((resolve, reject) => {
+            try {
+                this.ws = new WebSocket('wss://hermes.pyth.network/ws');
+                
+                // Setup ping-pong for connection keepalive
+                this.lastPong = Date.now();
+                this.pingInterval = setInterval(() => {
+                    if (this.ws.readyState === WebSocket.OPEN) {
+                        // Check if we haven't received a pong response
+                        if (Date.now() - this.lastPong > 10000) {
+                            logger.warn('No pong response, reconnecting...');
+                            this.ws.terminate();
+                            return;
+                        }
+                        this.ws.ping(() => {});
+                    }
+                }, 5000);
+
+                this.ws.on('open', () => {
+                    logger.info('WebSocket connection established');
+                    this.reconnecting = false;
+                    this.reconnectAttempts = 0;
+                    this.subscribe(priceIds);
+                    resolve();
+                });
+
+                this.ws.on('pong', () => {
+                    this.lastPong = Date.now();
+                });
+
+                this.ws.on('message', (data) => {
+                    try {
+                        const message = JSON.parse(data.toString());
+                        
+                        if (message.type === 'error') {
+                            logger.error(`WebSocket error message: ${message.message}`);
+                            return;
+                        }
+                        
+                        if (message.type === 'subscribe_success') {
+                            logger.info(`Successfully subscribed to ${message.id}`);
+                            this.subscribedFeeds.add(message.id);
+                            return;
+                        }
+                        
+                        if (message.type === 'price_update' || message.type === 'price') {
+                            if (!message.price_feed) {
+                                logger.error('Received price update without price_feed data', message);
+                                return;
+                            }
+
+                            const priceFeed = message.price_feed;
+                            this.lastUpdateTime = Date.now();
+                            
+                            this.processPriceUpdate({
+                                id: priceFeed.id,
+                                price: {
+                                    price: priceFeed.price?.price || '0',
+                                    conf: priceFeed.price?.conf || '0',
+                                    expo: priceFeed.price?.expo || 0,
+                                    publish_time: priceFeed.price?.publish_time || Date.now()
+                                }
+                            });
+                        }
+                    } catch (error) {
+                        logger.error(`Error processing WebSocket message: ${error.message}`);
+                    }
+                });
+
+                this.ws.on('error', (error) => {
+                    logger.error(`WebSocket error: ${error.message}`);
+                    if (!this.reconnecting) {
+                        this.reconnect(priceIds);
+                    }
+                });
+
+                this.ws.on('close', () => {
+                    logger.warn('WebSocket connection closed');
+                    if (this.isStreaming && !this.reconnecting) {
+                        this.reconnect(priceIds);
+                    }
+                });
+
+                // Set initial connection timeout
+                const connectTimeout = setTimeout(() => {
+                    if (this.ws.readyState !== WebSocket.OPEN) {
+                        logger.error('WebSocket connection timeout');
+                        this.ws.terminate();
+                        reject(new Error('WebSocket connection timeout'));
+                    }
+                }, 5000);
+
+                this.ws.on('open', () => {
+                    clearTimeout(connectTimeout);
+                });
+
+            } catch (error) {
+                logger.error(`Failed to establish WebSocket connection: ${error.message}`);
+                reject(error);
             }
+        });
+    }
+
+    /**
+     * Subscribe to price feeds
+     */
+    subscribe(priceIds) {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            logger.error('Cannot subscribe: WebSocket not connected');
+            return;
+        }
+
+        // Group price IDs into batches of 10 to avoid message size limits
+        const batchSize = 10;
+        for (let i = 0; i < priceIds.length; i += batchSize) {
+            const batch = priceIds.slice(i, i + batchSize);
+            const subscribeMessage = {
+                type: 'subscribe',
+                ids: batch
+            };
             
             try {
-                for (const priceId of priceIds) {
-                    await this.fetchLatestPrice(priceId);
-                }
+                this.ws.send(JSON.stringify(subscribeMessage));
+                const batchSummary = batch[0].slice(0, 20) + (batch.length > 1 ? '...' : '');
+                logger.info(`Subscribing to feeds batch ${i/batchSize + 1}: ${batchSummary}`);
             } catch (error) {
-                logger.error(`Error in polling: ${error.message}`);
+                logger.error(`Error subscribing to feeds batch ${i/batchSize + 1}: ${error.message}`);
             }
-        }, 100); // Poll every 100ms seconds
+        }
+    }
+
+    /**
+     * Reconnect logic with backoff
+     */
+    async reconnect(priceIds) {
+        if (this.reconnecting) return;
+        this.reconnecting = true;
+        
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            logger.error(`Failed to reconnect after ${this.maxReconnectAttempts} attempts`);
+            this.cleanup();
+            return;
+        }
+
+        this.reconnectAttempts++;
+        const backoffTime = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+        logger.info(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${backoffTime/1000}s...`);
+        
+        await new Promise(resolve => setTimeout(resolve, backoffTime));
+        
+        try {
+            await this.connect(priceIds);
+            logger.info('Reconnection successful');
+        } catch (error) {
+            logger.error(`Reconnection attempt ${this.reconnectAttempts} failed: ${error.message}`);
+            this.reconnecting = false;
+            await this.reconnect(priceIds);
+        }
     }
     
     /**
      * Process incoming price update
      */
     processPriceUpdate(priceFeed) {
-        const price = parseFloat(priceFeed.price.price) / Math.pow(10, Math.abs(priceFeed.price.expo));
-        const confidence = parseFloat(priceFeed.price.conf) / Math.pow(10, Math.abs(priceFeed.price.expo));
+        // Ensure we have valid numeric values
+        const priceValue = priceFeed.price.price || '0';
+        const confValue = priceFeed.price.conf || '0';
+        const expoValue = priceFeed.price.expo || 0;
+        
+        // Convert scientific notation to decimal string
+        const price = parseFloat(priceValue) / Math.pow(10, Math.abs(expoValue));
+        const confidence = parseFloat(confValue) / Math.pow(10, Math.abs(expoValue));
         
         const priceData = {
             id: priceFeed.id,
             price: price,
             confidence: confidence,
-            publishTime: priceFeed.price.publish_time,
-            prevPublishTime: priceFeed.prev_publish_time,
-            expo: priceFeed.price.expo,
+            // Convert publish_time to milliseconds if it's in seconds
+            publishTime: parseInt(priceFeed.price.publish_time || 0) * 1000,
+            prevPublishTime: priceFeed.prev_publish_time ? parseInt(priceFeed.prev_publish_time) * 1000 : 0,
+            expo: expoValue,
             timestamp: Date.now()
         };
         
-        // Store latest price
         this.latestPrices.set(priceFeed.id, priceData);
         
-        // Store in history (keep last 100)
         if (!this.priceHistory.has(priceFeed.id)) {
             this.priceHistory.set(priceFeed.id, []);
         }
@@ -129,16 +290,19 @@ class PythHermesClient {
             history.shift();
         }
         
-        // Find asset name
         const assetName = Object.keys(config.priceIds).find(
             key => config.priceIds[key] === priceFeed.id
         );
         
-        logger.info(` ${assetName || priceFeed.id.slice(0, 8)}: $${price.toFixed(2)} (±$${confidence.toFixed(2)})`);
+        if (price && !isNaN(price)) {
+            logger.info(`${assetName || (priceFeed.id || '').slice(0, 8)}: $${price.toFixed(2)} (±$${confidence.toFixed(2)})`);
+        } else {
+            logger.warn(`Invalid price update for ${assetName || (priceFeed.id || '').slice(0, 8)}`);
+        }
     }
-    
+
     /**
-     * Get latest price for a specific feed (from memory - FREE!)
+     * Get latest price for a specific feed
      */
     getLatestPrice(priceId) {
         return this.latestPrices.get(priceId) || null;
@@ -153,33 +317,61 @@ class PythHermesClient {
     }
     
     /**
-     * Get all latest prices
+     * Get all latest prices with validation
      */
     getAllLatestPrices() {
+        const now = Date.now();
         const prices = {};
+        let staleCount = 0;
+        let missingCount = 0;
+
         for (const [assetName, priceId] of Object.entries(config.priceIds)) {
-            prices[assetName] = this.latestPrices.get(priceId);
+            const priceData = this.latestPrices.get(priceId);
+            // Increased staleness threshold to 2 minutes
+            if (priceData && now - priceData.timestamp <= 120000) {
+                prices[assetName] = priceData;
+                if (now - priceData.timestamp > 30000) {
+                    logger.warn(`Using older price for ${assetName}: ${(now - priceData.timestamp) / 1000}s old`);
+                }
+            } else if (priceData) {
+                staleCount++;
+                logger.warn(`Stale price for ${assetName}: ${(now - priceData.timestamp) / 1000}s old`);
+            } else {
+                missingCount++;
+                logger.warn(`Missing price data for ${assetName}`);
+            }
         }
+
+        if (staleCount > 0 || missingCount > 0) {
+            logger.warn(`Price data status: ${staleCount} stale, ${missingCount} missing`);
+            if (staleCount + missingCount > Object.keys(config.priceIds).length / 2) {
+                logger.error('Too many stale/missing prices, attempting to recover connection...');
+                this.isStreaming = false;
+                this.startPriceStream();
+            }
+        }
+
         return prices;
     }
-    
+
     /**
-     * Fetch single price update (fallback method)
+     * Clean up resources
      */
-    async fetchLatestPrice(priceId) {
-        try {
-            const priceFeeds = await this.client.getLatestPriceUpdates([priceId]);
-            
-            if (priceFeeds && priceFeeds.parsed && priceFeeds.parsed.length > 0) {
-                const priceFeed = priceFeeds.parsed[0];
-                this.processPriceUpdate(priceFeed);
-                return this.latestPrices.get(priceId);
-            }
-        } catch (error) {
-            logger.error(`Error fetching price for ${priceId}: ${error.message}`);
+    cleanup() {
+        if (this.healthCheckInterval) {
+            clearInterval(this.healthCheckInterval);
         }
-        return null;
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+        }
+        if (this.ws) {
+            this.ws.terminate();
+            this.ws = null;
+        }
+        this.isStreaming = false;
+        this.reconnecting = false;
+        this.subscribedFeeds.clear();
     }
 }
 
-module.exports = new PythHermesClient();
+export default new PythHermesClient();

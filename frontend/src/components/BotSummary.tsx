@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { Activity, Shield, AlertTriangle } from 'lucide-react';
 
@@ -27,9 +27,9 @@ export default function BotSummary() {
         if (!response.ok) throw new Error('Failed to fetch bot stats');
         const data = await response.json();
         setStats({
-          totalBots: data.totalBots || 0,
-          goodBots: data.goodBots || 0,
-          badBots: data.badBots || 0,
+          totalBots: (data.total !== undefined) ? data.total : 0,
+          goodBots: (data.goodBots !== undefined) ? data.goodBots.length : (data.goodBots ? data.goodBots : 0),
+          badBots: (data.badBots !== undefined) ? data.badBots.length : (data.badBots ? data.badBots : 0),
           riskDistribution: data.riskDistribution || [],
           typeDistribution: data.typeDistribution || [],
         });
