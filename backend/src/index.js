@@ -16,6 +16,7 @@ import botDetector from './services/botDetector.js';
 import userRoutes from './routes/userRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import simulationRouter from './routes/simulationRoutes.js';
+import scanRoutes from './routes/scanRoutes.js';
 // --- End of ESM Changes ---
 
 // Initialize Express
@@ -30,6 +31,7 @@ app.use(morgan('combined'));
 app.use('/api/user', userRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/simulation', simulationRouter);
+app.use('/api/scan', scanRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

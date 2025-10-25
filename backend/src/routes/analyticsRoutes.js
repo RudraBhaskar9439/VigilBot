@@ -1,6 +1,7 @@
 import express from 'express';
 import pythClient from '../services/pythHermesClient.js';
 import botDetector from '../services/botDetector.js';
+import mainnetBotDetector from '../mainnet-bot-detector.js';
 import logger from '../utils/logger.js';
 import appConfig from '../config/appConfig.js';
 
@@ -192,12 +193,27 @@ router.get('/bots/summary', (req, res) => {
 
 /**
  * GET /api/analytics/bots
- * Get all detected bots (good and bad)
+ * Get all detected bots (good and bad) - supports filtering by type
  */
 router.get('/bots', (req, res) => {
     try {
-        const goodBots = botDetector.getGoodBots();
-        const badBots = botDetector.getBadBots();
+        const { type } = req.query;
+        
+        // Get all bots from mainnetBotDetector
+        const allBots = mainnetBotDetector.getDetectedBots();
+        
+        // Filter by category
+        const goodBots = allBots.filter(bot => bot.category === 'GOOD_BOT');
+        const badBots = allBots.filter(bot => bot.category === 'BAD_BOT' || bot.category === 'SUSPICIOUS');
+        
+        // If type parameter is provided, return only that type
+        if (type === 'good') {
+            return res.json({ bots: goodBots, count: goodBots.length });
+        } else if (type === 'bad') {
+            return res.json({ bots: badBots, count: badBots.length });
+        }
+        
+        // Otherwise return both
         res.json({
             goodBots,
             badBots,
