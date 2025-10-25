@@ -46,6 +46,39 @@ export default function BotDetectionScan() {
   const [itemsPerPage] = useState(100); // Increased to 100 per page
   const API_BASE = 'http://localhost:3000';
 
+  // Load scan results from localStorage on mount
+  useEffect(() => {
+    const loadFromStorage = () => {
+      try {
+        const stored = localStorage.getItem('botScanResults');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          // Only load if not currently running and has data
+          if (!parsed.isRunning && parsed.users && parsed.users.length > 0) {
+            console.log('📥 Loaded scan results from localStorage:', parsed.users.length, 'users');
+            setScanStatus(parsed);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading from localStorage:', error);
+      }
+    };
+
+    loadFromStorage();
+  }, []);
+
+  // Save scan results to localStorage whenever they change
+  useEffect(() => {
+    if (scanStatus && scanStatus.users.length > 0) {
+      try {
+        localStorage.setItem('botScanResults', JSON.stringify(scanStatus));
+        console.log('💾 Saved scan results to localStorage');
+      } catch (error) {
+        console.error('Error saving to localStorage:', error);
+      }
+    }
+  }, [scanStatus]);
+
   // Poll for scan status only when running
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -125,6 +158,15 @@ export default function BotDetectionScan() {
     }
   };
 
+  const clearResults = () => {
+    if (confirm('Are you sure you want to clear all scan results?')) {
+      localStorage.removeItem('botScanResults');
+      setScanStatus(null);
+      setCurrentPage(1);
+      console.log('🗑️ Cleared scan results');
+    }
+  };
+
   const getFilteredUsers = () => {
     if (!scanStatus?.users) return [];
     
@@ -195,6 +237,14 @@ export default function BotDetectionScan() {
             <RefreshCw className="w-4 h-4" />
             Refresh
           </button>
+          {scanStatus && scanStatus.users.length > 0 && (
+            <button
+              onClick={clearResults}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors"
+            >
+              Clear Results
+            </button>
+          )}
         </div>
       </div>
 
@@ -215,6 +265,13 @@ export default function BotDetectionScan() {
               style={{ width: `${scanStatus.progress}%` }}
             />
           </div>
+        </div>
+      )}
+
+      {/* Loaded from Storage Indicator */}
+      {scanStatus && !scanStatus.isRunning && scanStatus.users.length > 0 && (
+        <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-sm text-blue-400">
+          💾 Results loaded from storage - {scanStatus.users.length} users from previous scan
         </div>
       )}
 
@@ -285,6 +342,16 @@ export default function BotDetectionScan() {
               }`}
             >
               Good Bots ({scanStatus.users.filter(u => u.detectedCategory === 'GOOD_BOT').length})
+            </button>
+            <button
+              onClick={() => { setSelectedCategory('SUSPICIOUS'); setCurrentPage(1); }}
+              className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                selectedCategory === 'SUSPICIOUS'
+                  ? 'bg-yellow-500 text-white'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              }`}
+            >
+              Suspicious ({scanStatus.users.filter(u => u.detectedCategory === 'SUSPICIOUS').length})
             </button>
             <button
               onClick={() => { setSelectedCategory('BAD_BOT'); setCurrentPage(1); }}

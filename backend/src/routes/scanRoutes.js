@@ -281,20 +281,27 @@ async function runScan(userCount) {
             
             // Determine detected category
             let detectedCategory = 'HUMAN';
-            if (result.score >= 80) {
+            const score = Number(result.score); // Ensure it's a number
+            
+            if (score >= 80) {
                 detectedCategory = 'BAD_BOT';
-            } else if (result.score >= 40 && result.score < 80) {
+            } else if (score >= 40) {
                 detectedCategory = 'SUSPICIOUS';
-            } else if (result.score >= 20 && result.score < 40) {
+            } else if (score >= 20) {
                 detectedCategory = 'GOOD_BOT';
             }
             
-            // Update stats
+            // Debug logging for scores near threshold
+            if (score >= 75 && score < 85) {
+                logger.info(`Score ${score} → Category: ${detectedCategory}`);
+            }
+            
+            // Update stats based on DETECTED category (not actual category)
             currentScanResults.stats.total++;
-            if (user.category === 'HUMAN') currentScanResults.stats.humans++;
-            if (user.category === 'GOOD_BOT') currentScanResults.stats.goodBots++;
-            if (user.category === 'SUSPICIOUS') currentScanResults.stats.suspicious++;
-            if (user.category === 'BAD_BOT') currentScanResults.stats.badBots++;
+            if (detectedCategory === 'HUMAN') currentScanResults.stats.humans++;
+            if (detectedCategory === 'GOOD_BOT') currentScanResults.stats.goodBots++;
+            if (detectedCategory === 'SUSPICIOUS') currentScanResults.stats.suspicious++;
+            if (detectedCategory === 'BAD_BOT') currentScanResults.stats.badBots++;
             
             // Add to detected bots list if not human
             if (detectedCategory !== 'HUMAN') {
@@ -331,7 +338,7 @@ async function runScan(userCount) {
                 address: user.address,
                 actualCategory: user.category,
                 detectedCategory: detectedCategory,
-                botScore: result.score,
+                botScore: score, // Use the converted number
                 reactionTime: result.reactionTime,
                 signals: result.signals && result.signals.length > 0 ? result.signals.slice(0, 2) : [],
                 profile: {
