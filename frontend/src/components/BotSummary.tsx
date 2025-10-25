@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Activity, Shield, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useBotSummary } from '../hooks/useBackendData';
@@ -12,8 +13,33 @@ interface BotStats {
 
 export default function BotSummary() {
   const { data, loading, error, refresh } = useBotSummary(true, 30000);
+  const [scanStats, setScanStats] = useState<any>(null);
 
-  // Transform backend data to component format
+  // Load scan data from localStorage
+  useEffect(() => {
+    const loadScanData = () => {
+      try {
+        const stored = localStorage.getItem('botScanResults');
+        if (stored) {
+          const scanResults = JSON.parse(stored);
+          if (scanResults.users && scanResults.users.length > 0) {
+            console.log('BotSummary: Loaded scan stats:', scanResults.stats);
+            setScanStats(scanResults);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading scan data:', error);
+      }
+    };
+
+    loadScanData();
+
+    // Poll for updates
+    const interval = setInterval(loadScanData, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Transform backend data or scan data to component format
   const stats: BotStats = data ? {
     totalBots: data.summary.totalBots,
     goodBots: data.summary.goodBots.count,
@@ -28,6 +54,17 @@ export default function BotSummary() {
       value: value as number,
       color: index === 0 ? '#10b981' : '#06b6d4',
     })).filter(item => item.value > 0),
+  } : scanStats && scanStats.stats ? {
+    // Use scan data if backend data not available
+    totalBots: scanStats.stats.goodBots + scanStats.stats.badBots + scanStats.stats.suspicious,
+    goodBots: scanStats.stats.goodBots,
+    badBots: scanStats.stats.badBots,
+    riskDistribution: scanStats.stats.badBots > 0 ? [
+      { name: 'Detected', value: scanStats.stats.badBots, color: '#ef4444' },
+    ] : [],
+    typeDistribution: scanStats.stats.goodBots > 0 ? [
+      { name: 'Good Bots', value: scanStats.stats.goodBots, color: '#10b981' },
+    ] : [],
   } : {
     totalBots: 0,
     goodBots: 0,
@@ -35,6 +72,11 @@ export default function BotSummary() {
     riskDistribution: [],
     typeDistribution: [],
   };
+
+  // Debug logging
+  console.log('BotSummary - Backend data available:', !!data);
+  console.log('BotSummary - Scan stats available:', !!scanStats);
+  console.log('BotSummary - Final stats:', stats);
 
   const StatCard = ({
     icon: Icon,

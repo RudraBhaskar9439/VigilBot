@@ -24,7 +24,7 @@ let globalStats = {
 // User categories with their characteristics
 const USER_CATEGORIES = {
     HUMAN: {
-        weight: 0.60, // 60% humans
+        weight: 0.55, // 55% humans (reduced from 60%)
         reactionTimeRange: [2000, 15000], // 2-15 seconds
         amountRange: [0.1, 10], // 0.1 - 10 ETH
         precisionRange: [0, 3], // 0-3 decimal places
@@ -41,7 +41,7 @@ const USER_CATEGORIES = {
         liquidityProvided: [500, 10000] // $500-$10k liquidity
     },
     SUSPICIOUS: {
-        weight: 0.15, // 15% suspicious
+        weight: 0.10, // 10% suspicious (reduced from 15%)
         reactionTimeRange: [300, 1500], // 0.3-1.5 seconds
         amountRange: [0.01, 5], // Small to medium trades
         precisionRange: [4, 7], // High precision
@@ -49,7 +49,7 @@ const USER_CATEGORIES = {
         frequencyRange: [10, 30] // 10-30 trades per hour
     },
     BAD_BOT: {
-        weight: 0.10, // 10% bad bots (manipulative, front-running)
+        weight: 0.20, // 20% bad bots (increased from 10%) - will give ~300 bad bots
         reactionTimeRange: [10, 300], // 10-300ms (super fast)
         amountRange: [0.0001, 0.1], // Micro trades
         precisionRange: [8, 12], // Extreme precision

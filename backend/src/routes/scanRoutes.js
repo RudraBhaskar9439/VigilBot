@@ -283,7 +283,7 @@ async function runScan(userCount) {
             let detectedCategory = 'HUMAN';
             const score = Number(result.score); // Ensure it's a number
             
-            if (score >= 80) {
+            if (score >= 70) {
                 detectedCategory = 'BAD_BOT';
             } else if (score >= 40) {
                 detectedCategory = 'SUSPICIOUS';
@@ -292,7 +292,7 @@ async function runScan(userCount) {
             }
             
             // Debug logging for scores near threshold
-            if (score >= 75 && score < 85) {
+            if (score >= 65 && score < 75) {
                 logger.info(`Score ${score} → Category: ${detectedCategory}`);
             }
             

@@ -8,6 +8,7 @@ import BotTable from '../components/BotTable';
 import UserAnalytics from '../components/UserAnalytics';
 import AdminPanel from '../components/AdminPanel';
 import BotDetectionScan from '../components/BotDetectionScan';
+import ScanAnalysis from '../components/ScanAnalysis';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -73,7 +74,7 @@ export default function Dashboard() {
 
         <section>
           <h2 className="text-2xl font-bold text-white mb-6">Bot Detection Overview</h2>
-          <BotSummary />
+          <ScanAnalysis />
         </section>
 
         <section>
