@@ -9,11 +9,31 @@ const router = express.Router();
 
 /**
  * GET /api/analytics/prices
- * Get all latest prices from Pyth
+ * Get all latest prices from Pyth (with HTTP fallback)
  */
-router.get('/prices', (req, res) => {
+router.get('/prices', async (req, res) => {
     try {
-        const prices = pythClient.getAllLatestPrices();
+        let pricesByName = pythClient.getAllLatestPrices();
+        
+        // If WebSocket prices are empty, fetch from HTTP API as fallback
+        if (Object.keys(pricesByName).length === 0) {
+            logger.warn('No WebSocket prices available, using HTTP fallback');
+            pricesByName = await pythClient.fetchLatestPricesHTTP();
+        }
+        
+        // Convert to price ID format for frontend compatibility
+        const prices = {};
+        for (const [assetName, priceData] of Object.entries(pricesByName)) {
+            // assetName is like 'BTC/USD', we need to get the priceId
+            const priceId = appConfig.priceIds[assetName];
+            if (priceId) {
+                // Remove '0x' prefix if present for consistency
+                const cleanPriceId = priceId.startsWith('0x') ? priceId.slice(2) : priceId;
+                prices[cleanPriceId] = priceData;
+            }
+        }
+        
+        logger.info(`Returning prices for ${Object.keys(prices).length} assets`);
         res.json({ prices });
     } catch (error) {
         logger.error(`Error fetching prices: ${error.message}`);

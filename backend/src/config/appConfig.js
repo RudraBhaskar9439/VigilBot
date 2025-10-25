@@ -13,7 +13,7 @@ chainId: parseInt(process.env.CHAIN_ID || 11155111),
 
     // Pyth Network
     hermesUrl: process.env.HERMES_URL || 'https://hermes.pyth.network',  // Changed to HTTPS by default
-    hermesWsUrl: process.env.HERMES_WS_URL || 'wss://hermes.pyth.network/ws', // Separate WebSocket URL
+    hermesWsUrl: process.env.HERMES_WS_URL || 'wss://hermes-beta.pyth.network/ws', // Try beta endpoint
     priceIds: {
         'BTC/USD': process.env.BTC_PRICE_ID || '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43',
         'ETH/USD': process.env.ETH_PRICE_ID || '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',

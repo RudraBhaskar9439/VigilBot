@@ -1,15 +1,26 @@
 import WebSocket from 'ws';
 import config from '../config/appConfig.js';
 import logger from '../utils/logger.js';
+import https from 'https';
+import http from 'http';
+
+// Create custom agent for better connection handling
+const agent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 3000,
+    maxSockets: 10,
+    timeout: 10000
+});
 
 class PythHermesClient {
     constructor() {
-        if (!config.hermesUrl) {
-            logger.error('Hermes URL not configured');
+        if (!config.hermesWsUrl) {
+            logger.error('Hermes WebSocket URL not configured');
             this.isConfigured = false;
             return;
         }
         
+        logger.info('Initializing Pyth Hermes client');
         this.latestPrices = new Map();
         this.priceHistory = new Map();
         this.isStreaming = false;
@@ -33,6 +44,16 @@ class PythHermesClient {
         if(this.isStreaming) {
             logger.warn('Price stream already running');
             return;
+        }
+
+        // Attempt HTTP fetch first to ensure service is accessible
+        try {
+            const prices = await this.fetchLatestPricesHTTP();
+            if (Object.keys(prices).length > 0) {
+                logger.info('Successfully fetched initial prices via HTTP');
+            }
+        } catch (error) {
+            logger.warn(`HTTP fetch failed: ${error.message}. Continuing with WebSocket...`);
         }
         
         this.isStreaming = true;
@@ -95,7 +116,26 @@ class PythHermesClient {
 
         return new Promise((resolve, reject) => {
             try {
-                this.ws = new WebSocket('wss://hermes.pyth.network/ws');
+                logger.info(`Connecting to Pyth WebSocket at ${config.hermesWsUrl}`);
+                // Configure WebSocket with proper options
+                this.ws = new WebSocket(config.hermesWsUrl, {
+                    handshakeTimeout: 10000,
+                    perMessageDeflate: false, // Disable compression for better performance
+                    followRedirects: true,
+                    headers: {
+                        'User-Agent': 'TradingBotDetection/1.0.0'
+                    },
+                    timeout: 10000,
+                    agent: agent
+                });
+                
+                // Set connection timeout
+                const connectionTimeout = setTimeout(() => {
+                    if (this.ws.readyState !== WebSocket.OPEN) {
+                        this.ws.terminate();
+                        reject(new Error('Connection timeout'));
+                    }
+                }, 10000); // 10 second timeout
                 
                 // Setup ping-pong for connection keepalive
                 this.lastPong = Date.now();
@@ -178,7 +218,7 @@ class PythHermesClient {
 
                 // Set initial connection timeout
                 const connectTimeout = setTimeout(() => {
-                    if (this.ws.readyState !== WebSocket.OPEN) {
+                    if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
                         logger.error('WebSocket connection timeout');
                         this.ws.terminate();
                         reject(new Error('WebSocket connection timeout'));
@@ -357,6 +397,61 @@ class PythHermesClient {
     /**
      * Clean up resources
      */
+    /**
+     * Fetch latest prices via HTTP REST API (fallback when WebSocket fails)
+     */
+    async fetchLatestPricesHTTP() {
+        const prices = {};
+        
+        try {
+            // Get all price IDs
+            const priceIds = Object.values(config.priceIds);
+            const idsParam = priceIds.map(id => `ids[]=${id}`).join('&');
+            
+            // Fetch from Pyth HTTP API
+            const url = `${config.hermesUrl}/v2/updates/price/latest?${idsParam}`;
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            // Parse the response
+            if (data.parsed) {
+                for (const priceUpdate of data.parsed) {
+                    const priceId = priceUpdate.id;
+                    const assetName = Object.keys(config.priceIds).find(
+                        key => config.priceIds[key] === priceId || config.priceIds[key] === `0x${priceId}`
+                    );
+                    
+                    if (assetName && priceUpdate.price) {
+                        const price = parseFloat(priceUpdate.price.price) * Math.pow(10, priceUpdate.price.expo);
+                        const confidence = parseFloat(priceUpdate.price.conf) * Math.pow(10, priceUpdate.price.expo);
+                        
+                        prices[assetName] = {
+                            price: price,
+                            confidence: confidence,
+                            publishTime: priceUpdate.price.publish_time,
+                            timestamp: Date.now()
+                        };
+                        
+                        // Also store in latestPrices cache
+                        this.latestPrices.set(priceId, prices[assetName]);
+                        
+                        logger.info(`HTTP: ${assetName} = $${price.toFixed(2)} (±$${confidence.toFixed(2)})`);
+                    }
+                }
+            }
+            
+            return prices;
+        } catch (error) {
+            logger.error(`HTTP price fetch failed: ${error.message}`);
+            return {};
+        }
+    }
+
     cleanup() {
         if (this.healthCheckInterval) {
             clearInterval(this.healthCheckInterval);
