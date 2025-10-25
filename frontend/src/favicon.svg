@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e3a8a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563eb;stop-opacity:1" />
+    </linearGradient>
+    <radialGradient id="glowRed" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ef4444;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#dc2626;stop-opacity:0" />
+    </radialGradient>
+    <radialGradient id="glowGreen" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:0" />
+    </radialGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="32" fill="url(#bgGrad)"/>
+  
+  <!-- Shield outline -->
+  <path d="M32 8 L48 16 L48 32 Q48 44 32 54 Q16 44 16 32 L16 16 Z" 
+        fill="url(#shieldGrad)" 
+        stroke="#1e40af" 
+        stroke-width="1.5"
+        opacity="0.9"/>
+  
+  <!-- Bot detection scanner effect -->
+  <circle cx="32" cy="30" r="12" fill="none" stroke="#60a5fa" stroke-width="1.5" opacity="0.4">
+    <animate attributeName="r" values="8;14;8" dur="2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.6;0.2;0.6" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  
+  <!-- Robot head -->
+  <rect x="26" y="26" width="12" height="10" rx="2" fill="#1e293b" stroke="#3b82f6" stroke-width="1"/>
+  
+  <!-- Robot eyes (red for bad bot detection) -->
+  <circle cx="29" cy="30" r="1.5" fill="#ef4444">
+    <animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="35" cy="30" r="1.5" fill="#ef4444">
+    <animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+  
+  <!-- Antenna -->
+  <line x1="32" y1="26" x2="32" y2="22" stroke="#3b82f6" stroke-width="1.2" stroke-linecap="round"/>
+  <circle cx="32" cy="21" r="1.8" fill="#ef4444">
+    <animate attributeName="fill" values="#ef4444;#10b981;#ef4444" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  
+  <!-- Alert symbol (exclamation mark) -->
+  <g opacity="0.9">
+    <line x1="32" y1="40" x2="32" y2="45" stroke="#fbbf24" stroke-width="2" stroke-linecap="round">
+      <animate attributeName="opacity" values="1;0.4;1" dur="1s" repeatCount="indefinite"/>
+    </line>
+    <circle cx="32" cy="48" r="1" fill="#fbbf24">
+      <animate attributeName="opacity" values="1;0.4;1" dur="1s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+  
+  <!-- Scanning lines -->
+  <line x1="20" y1="30" x2="24" y2="30" stroke="#60a5fa" stroke-width="0.8" opacity="0.6">
+    <animate attributeName="x1" values="20;22;20" dur="2s" repeatCount="indefinite"/>
+    <animate attributeName="x2" values="24;26;24" dur="2s" repeatCount="indefinite"/>
+  </line>
+  <line x1="40" y1="30" x2="44" y2="30" stroke="#60a5fa" stroke-width="0.8" opacity="0.6">
+    <animate attributeName="x1" values="40;38;40" dur="2s" repeatCount="indefinite"/>
+    <animate attributeName="x2" values="44;42;44" dur="2s" repeatCount="indefinite"/>
+  </line>
+  
+  <!-- Corner brackets (targeting effect) -->
+  <path d="M18 22 L18 18 L22 18" fill="none" stroke="#10b981" stroke-width="1.2" opacity="0.7"/>
+  <path d="M46 22 L46 18 L42 18" fill="none" stroke="#10b981" stroke-width="1.2" opacity="0.7"/>
+  <path d="M18 38 L18 42 L22 42" fill="none" stroke="#10b981" stroke-width="1.2" opacity="0.7"/>
+  <path d="M46 38 L46 42 L42 42" fill="none" stroke="#10b981" stroke-width="1.2" opacity="0.7"/>
+</svg>
