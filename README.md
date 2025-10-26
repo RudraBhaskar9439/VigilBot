@@ -240,8 +240,8 @@ Create `frontend/.env`:
 
 ```env
 # API Configuration
-VITE_API_URL=http://localhost:3000
-VITE_WS_URL=ws://localhost:3000
+VITE_API_URL=http://localhost:3001
+VITE_WS_URL=ws://localhost:3001
 
 # Blockchain Configuration
 VITE_CONTRACT_ADDRESS=your_deployed_contract_address
@@ -283,7 +283,7 @@ cd backend
 npm start
 ```
 
-The backend will start on `http://localhost:3000` and:
+The backend will start on `http://localhost:3001` and:
 - Connect to Pyth Network for price streaming
 - Listen to blockchain events
 - Start the REST API server
@@ -313,8 +313,8 @@ The frontend will start on `http://localhost:5173`
 
 Open your browser and navigate to:
 - **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:3000
-- **Health Check**: http://localhost:3000/health
+- **Backend API**: http://localhost:3001
+- **Health Check**: http://localhost:3001/health
 
 ### Development Mode
 
@@ -412,17 +412,17 @@ GET /api/scan/results/:address
 
 **Get User Status:**
 ```bash
-curl http://localhost:3000/api/user/0x1234.../status
+curl http://localhost:3001/api/user/0x1234.../status
 ```
 
 **Get Live Prices:**
 ```bash
-curl http://localhost:3000/api/analytics/prices
+curl http://localhost:3001/api/analytics/prices
 ```
 
 **Get Bot Statistics:**
 ```bash
-curl http://localhost:3000/api/analytics/stats
+curl http://localhost:3001/api/analytics/stats
 ```
 
 ## 🤖 Bot Detection Algorithm
@@ -610,7 +610,7 @@ Error: Cannot connect to RPC
 ```
 Network Error
 ```
-**Solution:** Ensure backend is running on port 3000 and `VITE_API_URL` is correct.
+**Solution:** Ensure backend is running on port 3001 and `VITE_API_URL` is correct.
 
 **3. Contract deployment fails**
 ```

@@ -3,7 +3,7 @@ import contractData from './contract.json' with { type: 'json' };
 
 const appConfig = {
     // Server
-    port: process.env.PORT || 3000,
+    port: process.env.PORT || 3001,
     nodeEnv: process.env.NODE_ENV || 'development',
 rpcUrl: process.env.SEPOLIA_WSS_URL || 'wss://sepolia.infura.io/ws/v3/2758fd4e9f4640e2b22cddb3d671ba2e',
 chainId: parseInt(process.env.CHAIN_ID || 11155111),

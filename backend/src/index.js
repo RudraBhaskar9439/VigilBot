@@ -27,7 +27,7 @@ const app = express();
 const corsOptions = {
     origin: [
         'http://localhost:5173',
-        'http://localhost:3000',
+        'http://localhost:3001',
         'https://trading-bot-detection-w25l.vercel.app',
         'https://*.vercel.app',
         'https://vercel.app',
