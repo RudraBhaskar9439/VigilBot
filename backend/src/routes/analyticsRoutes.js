@@ -291,4 +291,40 @@ router.get('/bots/statistics', (req, res) => {
     }
 });
 
+/**
+ * GET /api/analytics/bots/:type
+ * Get bots by type (good or bad)
+ */
+router.get('/bots/:type', (req, res) => {
+    try {
+        const { type } = req.params;
+        
+        if (!['good', 'bad'].includes(type)) {
+            return res.status(400).json({ error: 'Invalid bot type. Must be "good" or "bad"' });
+        }
+        
+        let bots = [];
+        if (type === 'good') {
+            bots = botDetector.getGoodBots();
+        } else {
+            bots = botDetector.getBadBots();
+        }
+        
+        res.json({
+            success: true,
+            count: bots.length,
+            bots: bots,
+            timestamp: Date.now()
+        });
+        
+    } catch (error) {
+        const errorMsg = `Error fetching ${req.params.type} bots: ${error.message}`;
+        logger.error(errorMsg);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to fetch bot data' 
+        });
+    }
+});
+
 export default router;

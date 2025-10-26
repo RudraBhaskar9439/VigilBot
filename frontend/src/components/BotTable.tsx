@@ -30,8 +30,8 @@ export default function BotTable({ type }: BotTableProps) {
     const fetchBots = async () => {
       try {
         setLoading(true);
-        // Fetch bots from backend instead of supabase
-        const response = await fetch(`/api/analytics/bots?type=${type}`);
+        // Fetch bots from backend
+        const response = await fetch(`/api/analytics/bots/${type}`);
         if (!response.ok) throw new Error('Failed to fetch bots');
         const data = await response.json();
         setBots(data.bots || []);
