@@ -1,7 +1,7 @@
-import React from 'react';
+import { FC } from 'react';
 import { Link } from 'react-router-dom';
 
-export default function Header() {
+const Header: FC = () => {
   return (
     <header className="bg-[#0a1628] border-b border-[#1a2942] py-4 px-8 flex items-center justify-between">
       <div className="flex items-center gap-4">
@@ -15,4 +15,6 @@ export default function Header() {
       </nav>
     </header>
   );
-}
+};
+
+export default Header;
