@@ -248,9 +248,9 @@ VITE_CONTRACT_ADDRESS=your_deployed_contract_address
 VITE_CHAIN_ID=11155111
 VITE_RPC_URL=https://sepolia.infura.io/v3/YOUR_INFURA_PROJECT_ID
 
-# Supabase Configuration (Optional)
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+# Supabase Configuration 
+VITE_SUPABASE_URL=[your_supabase_project_url](https://usdsediywkxbaebqxtkb.supabase.co)
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzZHNlZGl5d2t4YmFlYnF4dGtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjExNjEzMjcsImV4cCI6MjA3NjczNzMyN30.SI6_CiMM4iTFkWmVKjDmSye6Ye_M7gm8HMOZZPXa9PA
 ```
 
 ### Important Notes
