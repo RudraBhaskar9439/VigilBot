@@ -30,7 +30,12 @@ export default function MarketData() {
     const fetchPrices = async () => {
       try {
         setError(null);
-        const response = await fetch('/api/analytics/prices');
+        const apiUrl = import.meta.env.VITE_API_URL || '';
+        const response = await fetch(`${apiUrl}/api/analytics/prices`, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
         if (!response.ok) throw new Error('Failed to fetch prices');
         const data = await response.json();
         

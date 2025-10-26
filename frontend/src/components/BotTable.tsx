@@ -30,8 +30,13 @@ export default function BotTable({ type }: BotTableProps) {
     const fetchBots = async () => {
       try {
         setLoading(true);
-        // Fetch bots from backend
-        const response = await fetch(`/api/analytics/bots/${type}`);
+        // Fetch bots from backend using VITE_API_URL
+        const apiUrl = import.meta.env.VITE_API_URL || '';
+        const response = await fetch(`${apiUrl}/api/analytics/bots/${type}`, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
         if (!response.ok) throw new Error('Failed to fetch bots');
         const data = await response.json();
         setBots(data.bots || []);
