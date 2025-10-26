@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon --watch src src/index.js",
-    "test": "node tests/test-integration.js",
+    "test": "node src/test.js",
+    "test-integration": "node tests/test-integration.js",
     "deploy": "node src/simple-deploy.js",
     "production": "NODE_ENV=production node src/simple-deploy.js",
     "live": "node src/simple-deploy.js",
@@ -15,7 +16,6 @@
     "test-live": "node src/live-bot-test.js",
     "test-standalone": "node src/standalone-bot-test.js",
     "test-mainnet": "node src/test-mainnet.js",
-    "test-1500": "node src/test-1500-users.js",
     "diagnostic": "node src/diagnostic-check.js",
     "check-system": "node src/diagnostic-check.js"
   },

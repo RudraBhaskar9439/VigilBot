@@ -23,7 +23,7 @@ let currentScanResults = {
     }
 };
 
-// User categories with their characteristics (same as test-1500-users.js)
+// User categories with their characteristics (same as test.js)
 const USER_CATEGORIES = {
     HUMAN: {
         weight: 0.60,

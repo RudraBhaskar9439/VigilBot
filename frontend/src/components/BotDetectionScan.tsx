@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Play, Square, RefreshCw, Users, Bot, AlertTriangle, User } from 'lucide-react';
 
 interface ScanUser {
@@ -216,10 +216,10 @@ export default function BotDetectionScan() {
             <button
               onClick={startScan}
               disabled={isLoading}
-              className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="p-3 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              title="Run Scan (1500 Users)"
             >
-              <Play className="w-4 h-4" />
-              Run Scan (1500 Users)
+              <Play className="w-5 h-5" />
             </button>
           ) : (
             <button

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Shield, AlertTriangle, Clock } from 'lucide-react';
+import { Shield, AlertTriangle, Clock, Copy, Check } from 'lucide-react';
 
 interface DetectedBot {
   user: string;
@@ -22,6 +22,9 @@ interface BotTableProps {
 export default function BotTable({ type }: BotTableProps) {
   const [bots, setBots] = useState<DetectedBot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const itemsPerPage = 20;
 
   useEffect(() => {
     const fetchBots = async () => {
@@ -68,6 +71,20 @@ export default function BotTable({ type }: BotTableProps) {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
+  const copyAddress = (address: string) => {
+    navigator.clipboard.writeText(address);
+    setCopiedAddress(address);
+    setTimeout(() => setCopiedAddress(null), 2000);
+  };
+
+  const getPaginatedBots = () => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return bots.slice(startIndex, endIndex);
+  };
+
+  const totalPages = Math.ceil(bots.length / itemsPerPage);
+
   const formatDate = (date: string) => {
     return new Date(date).toLocaleString();
   };
@@ -102,6 +119,31 @@ export default function BotTable({ type }: BotTableProps) {
           No {type} bots detected yet
         </div>
       ) : (
+        <>
+        <div className="px-6 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/30">
+          <span className="text-sm text-slate-400">
+            Showing {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, bots.length)} of {bots.length} bots
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 text-xs bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-slate-300 transition-colors"
+            >
+              Previous
+            </button>
+            <span className="px-3 py-1 text-xs text-slate-400">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-1 text-xs bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-slate-300 transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -129,15 +171,26 @@ export default function BotTable({ type }: BotTableProps) {
               </tr>
             </thead>
             <tbody>
-              {bots.map((bot, index) => (
+              {getPaginatedBots().map((bot, index) => (
                 <tr
                   key={bot.id || index}
                   className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors"
                 >
                   <td className="px-6 py-4">
-                    <code className="text-cyan-400 font-mono text-sm">
-                      {formatAddress(bot.user || bot.address || '0x0000000000000000000000000000000000000000')}
-                    </code>
+                    <button
+                      onClick={() => copyAddress(bot.user || bot.address || '0x0000000000000000000000000000000000000000')}
+                      className="flex items-center gap-2 group hover:bg-slate-800/50 px-2 py-1 rounded transition-colors"
+                      title="Click to copy full address"
+                    >
+                      <code className="text-cyan-400 font-mono text-sm">
+                        {formatAddress(bot.user || bot.address || '0x0000000000000000000000000000000000000000')}
+                      </code>
+                      {copiedAddress === (bot.user || bot.address) ? (
+                        <Check className="w-3 h-3 text-green-400" />
+                      ) : (
+                        <Copy className="w-3 h-3 text-slate-500 group-hover:text-cyan-400 transition-colors" />
+                      )}
+                    </button>
                   </td>
                   <td className="px-6 py-4">
                     {type === 'good' ? (
@@ -174,6 +227,7 @@ export default function BotTable({ type }: BotTableProps) {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

@@ -1,18 +1,17 @@
-import React from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, LogOut, Wallet } from 'lucide-react';
+import { Activity, LogOut, Wallet, Copy, Check } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import MarketData from '../components/MarketData';
-import BotSummary from '../components/BotSummary';
 import BotTable from '../components/BotTable';
 import UserAnalytics from '../components/UserAnalytics';
-import AdminPanel from '../components/AdminPanel';
 import BotDetectionScan from '../components/BotDetectionScan';
 import ScanAnalysis from '../components/ScanAnalysis';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { walletAddress, subscription, disconnectWallet } = useAuth();
+  const [copied, setCopied] = useState(false);
 
   const handleDisconnect = () => {
     disconnectWallet();
@@ -21,6 +20,14 @@ export default function Dashboard() {
 
   const formatAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  const copyAddress = () => {
+    if (walletAddress) {
+      navigator.clipboard.writeText(walletAddress);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (
@@ -33,14 +40,18 @@ export default function Dashboard() {
                 <Activity className="w-8 h-8 text-cyan-400" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">Trading Bot Detection System</h1>
+                <h1 className="text-2xl font-bold text-white">VigilBot</h1>
                 <p className="text-sm text-slate-400">Real-time Analytics Dashboard</p>
               </div>
             </div>
 
             <div className="flex items-center gap-4">
               {walletAddress && (
-                <div className="flex items-center gap-3 px-4 py-2 bg-slate-800 rounded-lg">
+                <button
+                  onClick={copyAddress}
+                  className="flex items-center gap-3 px-4 py-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition-colors cursor-pointer group"
+                  title="Click to copy full address"
+                >
                   <Wallet className="w-5 h-5 text-cyan-400" />
                   <div>
                     <p className="text-white font-mono text-sm">
@@ -52,7 +63,12 @@ export default function Dashboard() {
                       </p>
                     )}
                   </div>
-                </div>
+                  {copied ? (
+                    <Check className="w-4 h-4 text-green-400" />
+                  ) : (
+                    <Copy className="w-4 h-4 text-slate-400 group-hover:text-cyan-400 transition-colors" />
+                  )}
+                </button>
               )}
               <button
                 onClick={handleDisconnect}
@@ -93,16 +109,12 @@ export default function Dashboard() {
           <BotTable type="bad" />
         </section>
 
-        <section>
-          <h2 className="text-2xl font-bold text-white mb-6">Admin Controls</h2>
-          <AdminPanel />
-        </section>
       </main>
 
       <footer className="border-t border-slate-800 bg-slate-900/50 backdrop-blur mt-12">
         <div className="container mx-auto px-6 py-6">
           <p className="text-center text-slate-500 text-sm">
-            Trading Bot Detection System © 2025 • Powered by Ethereum & Pyth Network
+            VigilBot © 2025 • Powered by Ethereum & Pyth Network
           </p>
         </div>
       </footer>

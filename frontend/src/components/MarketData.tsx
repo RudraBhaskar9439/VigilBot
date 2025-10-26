@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { TrendingUp, TrendingDown, RefreshCw, Activity, BarChart3, LineChart as LineChartIcon } from 'lucide-react';
+import { RefreshCw, Activity, BarChart3, LineChart as LineChartIcon } from 'lucide-react';
 
 interface PriceData {
   asset: string;
@@ -34,44 +34,53 @@ export default function MarketData() {
         if (!response.ok) throw new Error('Failed to fetch prices');
         const data = await response.json();
         
-        // Update price history for charts
-        const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const newHistory = { ...priceHistory };
-
-        // Transform Pyth data to display format
-        const transformed: PriceData[] = Object.entries(data.prices).map(([priceId, priceInfo]: [string, any]) => {
-          const asset = ASSET_NAMES[priceId] || priceId.slice(0, 6);
-          
-          // Initialize history array if needed
-          if (!newHistory[asset]) {
-            newHistory[asset] = [];
-          }
-          
-          // Add new price point
-          newHistory[asset].push({ time: now, price: priceInfo.price });
-          
-          // Keep only last 20 data points
-          if (newHistory[asset].length > 20) {
-            newHistory[asset].shift();
-          }
-          
-          // Calculate price change
-          const history = newHistory[asset];
-          const change = history.length > 1 
-            ? ((priceInfo.price - history[0].price) / history[0].price) * 100 
-            : 0;
-
-          return {
-            asset,
-            price: priceInfo.price,
-            change,
-            confidence: priceInfo.confidence,
-            history: [...history],
-          };
+        // Update price history for charts with timestamp
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('en-US', { 
+          hour: '2-digit', 
+          minute: '2-digit', 
+          second: '2-digit',
+          hour12: false 
         });
+        
+        setPriceHistory(prevHistory => {
+          const newHistory = { ...prevHistory };
 
-        setPriceHistory(newHistory);
-        setPriceData(transformed);
+          // Transform Pyth data to display format
+          const transformed: PriceData[] = Object.entries(data.prices).map(([priceId, priceInfo]: [string, any]) => {
+            const asset = ASSET_NAMES[priceId] || priceId.slice(0, 6);
+            
+            // Initialize history array if needed
+            if (!newHistory[asset]) {
+              newHistory[asset] = [];
+            }
+            
+            // Add new price point at the end (right side)
+            newHistory[asset] = [...newHistory[asset], { time: timeString, price: priceInfo.price }];
+            
+            // Keep only last 30 data points for smooth scrolling
+            if (newHistory[asset].length > 30) {
+              newHistory[asset] = newHistory[asset].slice(-30);
+            }
+            
+            // Calculate price change
+            const history = newHistory[asset];
+            const change = history.length > 1 
+              ? ((priceInfo.price - history[0].price) / history[0].price) * 100 
+              : 0;
+
+            return {
+              asset,
+              price: priceInfo.price,
+              change,
+              confidence: priceInfo.confidence,
+              history: [...history],
+            };
+          });
+
+          setPriceData(transformed);
+          return newHistory;
+        });
         setLoading(false);
       } catch (err: any) {
         setError(err.message || 'Error fetching prices');
@@ -82,11 +91,11 @@ export default function MarketData() {
     // Initial fetch
     fetchPrices();
     
-    // Auto-refresh every 5 seconds
-    const interval = setInterval(fetchPrices, 5000);
+    // Auto-refresh every 3 seconds for smoother updates
+    const interval = setInterval(fetchPrices, 3000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, []); // Empty dependency array to avoid recreating interval
 
   if (loading) return (
     <div className="flex items-center justify-center p-8">
@@ -129,7 +138,13 @@ export default function MarketData() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-              <XAxis dataKey="time" stroke="#64748b" fontSize={10} />
+              <XAxis 
+                dataKey="time" 
+                stroke="#64748b" 
+                fontSize={10}
+                interval="preserveStartEnd"
+                tickFormatter={(value) => value.split(':').slice(1).join(':')}
+              />
               <YAxis domain={['auto', 'auto']} stroke="#64748b" fontSize={10} />
               <Tooltip {...tooltipStyle} />
               <Area 
@@ -138,7 +153,9 @@ export default function MarketData() {
                 stroke="#06b6d4" 
                 strokeWidth={2}
                 fill={`url(#gradient-${data.asset})`}
-                animationDuration={300}
+                animationDuration={800}
+                animationEasing="ease-in-out"
+                isAnimationActive={true}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -149,14 +166,22 @@ export default function MarketData() {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart {...chartProps}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-              <XAxis dataKey="time" stroke="#64748b" fontSize={10} />
+              <XAxis 
+                dataKey="time" 
+                stroke="#64748b" 
+                fontSize={10}
+                interval="preserveStartEnd"
+                tickFormatter={(value) => value.split(':').slice(1).join(':')}
+              />
               <YAxis domain={['auto', 'auto']} stroke="#64748b" fontSize={10} />
               <Tooltip {...tooltipStyle} />
               <Bar 
                 dataKey="price" 
                 fill="#06b6d4"
                 radius={[4, 4, 0, 0]}
-                animationDuration={300}
+                animationDuration={800}
+                animationEasing="ease-in-out"
+                isAnimationActive={true}
               />
             </BarChart>
           </ResponsiveContainer>
@@ -168,7 +193,13 @@ export default function MarketData() {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart {...chartProps}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-              <XAxis dataKey="time" stroke="#64748b" fontSize={10} />
+              <XAxis 
+                dataKey="time" 
+                stroke="#64748b" 
+                fontSize={10}
+                interval="preserveStartEnd"
+                tickFormatter={(value) => value.split(':').slice(1).join(':')}
+              />
               <YAxis domain={['auto', 'auto']} stroke="#64748b" fontSize={10} />
               <Tooltip {...tooltipStyle} />
               <Line 
@@ -176,9 +207,11 @@ export default function MarketData() {
                 dataKey="price" 
                 stroke="#06b6d4" 
                 strokeWidth={2.5}
-                dot={{ fill: '#06b6d4', r: 3 }}
+                dot={false}
                 activeDot={{ r: 5 }}
-                animationDuration={300}
+                animationDuration={800}
+                animationEasing="ease-in-out"
+                isAnimationActive={true}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -244,14 +277,6 @@ export default function MarketData() {
             <div className="p-6 pb-4 border-b border-slate-800">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-2xl font-bold text-white">{data.asset}/USD</h3>
-                <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
-                  data.change >= 0 
-                    ? 'bg-green-500/20 text-green-400' 
-                    : 'bg-red-500/20 text-red-400'
-                }`}>
-                  {data.change >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                  {data.change >= 0 ? '+' : ''}{data.change.toFixed(2)}%
-                </span>
               </div>
               
               <div>

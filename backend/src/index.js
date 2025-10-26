@@ -23,7 +23,21 @@ import scanRoutes from './routes/scanRoutes.js';
 const app = express();
 
 // Middleware
-app.use(cors());
+// Configure CORS for production deployment
+const corsOptions = {
+    origin: [
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'https://*.vercel.app',
+        'https://vercel.app',
+        process.env.FRONTEND_URL || '*'
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(morgan('combined'));
 

@@ -1,6 +1,6 @@
 /**
  * API Service for Backend Communication
- * Fetches real-time data from the Trading Bot Detection backend
+ * Fetches real-time data from the VigilBot backend
  */
 
 // Use relative URL to go through Vite proxy in development
